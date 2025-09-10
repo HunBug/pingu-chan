@@ -71,15 +71,18 @@ Small, periodic checks that produce samples:
 * **DnsProbe**: resolve domains via specific resolvers.
 * **HttpProbe**: GET head endpoints (status, TTFB).
 * **UpnpProbe**: discover via SSDP & query NAT/UPnP (Open.NAT).
-* **GatewayProbe**: ping default gateway.
-* **MtuProbe**: DF pings with payload sweep to find path MTU.
+* **GatewayProbe**: ping default gateway. (Implemented)
+* **MtuProbe**: DF pings with payload sweep to find path MTU. (Implemented, best-effort)
 
 ### Collectors (passive/local facts)
 
 Snapshot local state:
 
-* **NetIfCollector**: interfaces, RSSI/PHY if available, speed/duplex, drivers.
-* **RouteCollector**: default route & changes.
+* **NetIfCollector**: interfaces, IPs/MAC, gateway, DNS. (Implemented)
+* **RouteCollector**: route table snapshot. (Implemented)
+* **FirewallCollector**: firewall state (ufw/firewalld/netsh/socketfilterfw). (Implemented)
+* **TracerouteCollector**: trace to 8.8.8.8 with hop list. (Implemented)
+* **InternetConnectivityCollector**: gateway + DNS presence heuristic. (Implemented)
 * **OsLogCollector**: (optional) tail iwlwifi/syslog (Linux) or EventLog (Windows).
 * **WifiCollector**: SSID/BSSID, band, channel, signal. (Windows: Native WiFi API; Linux: parse `iw`/`nmcli` fallbacks.)
 
@@ -240,6 +243,7 @@ pingu
     --once                      # one full cycle & exit
     --export csv|jsonl|sqlite   # override sinks
     --quiet                     # no console stats
+  --sudo                      # Linux/macOS: cache sudo at startup (optional)
   diagnose                      # run a “bundle” of quick tests and print summary
   stats                         # print rolling stats from local files
     --window 1m|1h|1d
@@ -247,13 +251,9 @@ pingu
   version
 ```
 
-### Console output style (every 60s)
+### Console output style (live)
 
-```
-[1m]  PING 1.1.1.1 loss  0.0% (30) | PING 8.8.8.8 loss  3.3% (30)
-[1m]  DNS  google.com@1.1.1.1 fail 0.0% | github.com@8.8.8.8 fail 0.0%
-[1h]  HTTP https://www.google.com/generate_204  ttfb p50=120ms p95=240ms
-```
+Two-line live status refreshed each second: PING loss/avg per target, DNS fail%/p95, HTTP TTFB p50/p95. Logs scroll above.
 
 ---
 
@@ -298,6 +298,10 @@ pingu
 * **CSV** and **JSONL** by default.
 * Optional **SQLite** via `Microsoft.Data.Sqlite`.
 * Rotation policy (by size or time) to avoid huge files.
+
+## Logging approach (current)
+
+Core uses a minimal LoggerHelper to forward logs to a simple logger implemented by the CLI TUI. When configured via `sinks.logs`, logs are also mirrored to a file. Core avoids heavy logging dependencies.
 
 ---
 

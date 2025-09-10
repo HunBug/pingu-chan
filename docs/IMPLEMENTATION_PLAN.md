@@ -11,7 +11,7 @@ Focus: deliver a usable, cross-platform monitoring/diagnostics tool quickly. Bui
 - Capability discovery: Partial (basic scanner + CLI output)
 - Stats: Done (live rollups shown in TUI)
 - Tests: Partial (CSV sink, config loader)
-- Deferred: collectors, rules engine, notifiers, DI host, log rotation, remote/API
+- Deferred: additional collectors (Wi‑Fi/UPnP), rules engine, notifiers, DI host, log rotation, remote/API
 
 ## 1. Guiding Principles
 - Cross-platform first: Windows, Linux, macOS.
@@ -92,14 +92,19 @@ Status: Done
 - If a robust tqdm-like .NET library exists with in-place rendering and concurrent writes, prefer it; otherwise implement a simple renderer (double-buffered lines + write-through logs).
 
 ## 10. Initial Probes/Collectors (MVP)
-Status: Probes done; collectors/rules deferred
+Status: Probes done (Ping/DNS/HTTP + Gateway/MTU); baseline collectors implemented; rules deferred
 - Probes:
   - PingProbe (targets: gateway, 1.1.1.1, 8.8.8.8).
   - DnsProbe (domains via resolvers).
   - HttpProbe (204 endpoints; TTFB).
+  - GatewayProbe (default route ping) — done
+  - MtuProbe (best-effort path MTU) — done
 - Collectors:
-  - NetIfCollector (interfaces, speeds, up/down, basic Wi-Fi if feasible).
-  - RouteCollector (default route, gateway address).
+  - NetIfCollector (interfaces, IPs/MAC, gateway, DNS) — done
+  - RouteCollector (route table snapshot) — done
+  - FirewallCollector (ufw/firewalld/netsh/socketfilterfw) — done
+  - TracerouteCollector (to 8.8.8.8) — done
+  - InternetConnectivityCollector (gateway + DNS heuristic) — done
 - Rules:
   - Loss threshold (1m warn/crit), DNS fail rate (1m warn), HTTP TTFB degradation.
 
@@ -127,6 +132,7 @@ Status: Implemented subset
 - Check if elevated/admin; if a component requires sudo and not available, include a hint:
   - e.g., “This check needs root to send raw ICMP on Linux. Run with sudo or set CAP_NET_RAW.”
 - Detect distro specifics (Debian/Arch variants) for install hints when feasible (best-effort).
+ - CLI supports `--sudo` to cache sudo credentials at startup (Linux/macOS). Diagnostics continue without sudo if denied.
 
 ## 15. Threading & Back-pressure
 - Each probe/collector runs in an async loop with `Task.Delay` and cancellation.
@@ -159,7 +165,7 @@ Status: Build/test pass; smoke verified
 
 ## Next steps (proposed)
 - Add log-level flag/env and `--quiet` mode while keeping file logs
-- Implement basic collectors (NetIf/Route) and 1–2 simple rules (ping loss, DNS fail rate)
+- Implement MTU and gateway health probes; add simple rules (ping loss, DNS fail rate)
 - Add file rotation (size/time) for CSV/JSONL/logs
 - Export capability report to JSONL during `diagnose`
 - Expand tests (probe timeouts, DurationParser edges, config variants)

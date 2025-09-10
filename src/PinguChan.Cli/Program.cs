@@ -23,6 +23,11 @@ var probes = new List<IProbe>();
 foreach (var t in cfg.Targets.Ping) probes.Add(new PingProbe(t, pingInt));
 foreach (var t in cfg.Targets.Dns) probes.Add(new DnsProbe(t, dnsInt));
 foreach (var t in cfg.Targets.Http) probes.Add(new HttpProbe(t, httpInt));
+// Gateway probe (implicit)
+var gatewayProbe = new GatewayProbe(TimeSpan.FromSeconds(5));
+if (!gatewayProbe.Id.EndsWith(":unknown")) probes.Add(gatewayProbe);
+// MTU probe (best-effort, infrequent)
+probes.Add(new MtuProbe("8.8.8.8", TimeSpan.FromMinutes(30)));
 
 // Collectors (diagnostics)
 var collectors = new List<ICollector>

@@ -17,10 +17,12 @@ Use a config file (recommended):
 dotnet run --project src/PinguChan.Cli -- --config pingu.yaml --duration 00:01:00
 ```
 
-Diagnostics mode (environment + quick one-shot probes):
+Diagnostics mode (environment + quick one-shot probes & collectors):
 
 ```bash
 dotnet run --project src/PinguChan.Cli -- diagnose
+# optional: request sudo for extended diagnostics on Linux/macOS
+dotnet run --project src/PinguChan.Cli -- --sudo diagnose
 ```
 
 ## CLI basics
@@ -28,9 +30,10 @@ dotnet run --project src/PinguChan.Cli -- diagnose
 - --config <path>  Path to YAML/JSON config (default: autodetect pingu.yaml/yml/json in CWD)
 - --duration <ts>  Total run time (e.g., 10s, 1m, 00:00:30). Omit to run until Ctrl+C.
 - --once           Run a single iteration of each probe and exit.
-- diagnose         Print capability report + one-shot probe run.
+- diagnose         Print capability report + one-shot probes and collectors.
+- --sudo           On Linux/macOS, try to cache sudo at startup (optional).
 
-During run, the CLI renders a 2-line live summary (loss/latency for ping; DNS failure rate and p95; HTTP TTFB p50/p95). It also writes results to configured sinks.
+During run, the CLI renders a 2-line live summary (loss/latency for ping; DNS failure rate and p95; HTTP TTFB p50/p95). It also writes results to configured sinks. If `sinks.logs` is set, human-readable logs are also written to that file.
 
 ## Configuration (pingu.yaml)
 
@@ -51,6 +54,8 @@ targets:
 sinks:
 	csv: netwatch.csv
 	jsonl: netwatch.jsonl
+	# optional: write readable logs to a file too
+	logs: pingu.log
 ```
 
 JSON config is also supported with the same schema.
@@ -59,11 +64,26 @@ JSON config is also supported with the same schema.
 
 - CSV: appended with header, suitable for spreadsheets and quick inspection.
 - JSONL: one JSON object per line, easy to ingest into tools or databases.
+- Logs (optional): human-readable lines (same as console), if `sinks.logs` is configured.
 
 Default file locations are relative to the executable’s directory. Use absolute paths if you want to write elsewhere.
+
+## Diagnostics collected
+
+In diagnose mode, in addition to one-shot probes (Ping/DNS/HTTP), Pingu-chan collects:
+- Network interfaces: name/type/status, MAC, IPs, gateway, DNS.
+- Routes snapshot: default routes and routing table.
+- Firewall state: ufw/firewalld (Linux), netsh (Windows), socketfilterfw (macOS).
+- Traceroute: hops to 8.8.8.8 (trimmed in logs; full text in JSONL `extra`).
+- Internet heuristic: checks for default gateway and DNS presence.
+- Gateway probe: pings default gateway (if present) for latency/loss.
+- MTU probe: best-effort path MTU estimate via DF pings (infrequent).
+
+These are printed to console/logs and exported to sinks with a compact JSON payload in the `extra` field.
 
 ## Notes
 
 - Platforms: Windows, Linux, macOS (.NET 9). No listeners by default.
 - Sensitive values (tokens/URLs) are not logged beyond hostnames and basic timings.
-- See `DESIGN.md` for architecture and roadmap.
+- `--sudo` is optional; without it, privileged diagnostics simply report FAIL but normal monitoring continues.
+- See `DESIGN.md` and `docs/IMPLEMENTATION_PLAN.md` for architecture and roadmap.
