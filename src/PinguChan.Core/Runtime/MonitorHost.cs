@@ -120,10 +120,10 @@ public sealed class MonitorHost : IAsyncDisposable
             "HTTP" => "HTTP",
             _ => kind
         };
-        var status = sample.Ok ? "OK" : "FAIL";
-        var ms = sample.Milliseconds.HasValue ? $" {sample.Milliseconds.Value:0}ms" : string.Empty;
-        var extra = string.IsNullOrWhiteSpace(sample.Extra) ? string.Empty : $" | {Truncate(sample.Extra!, 120)}";
-        var line = $"{tag} {sample.Target} {status}{ms}{extra}";
+    var status = sample.Ok ? "OK" : "FAIL";
+    var ms = sample.Milliseconds.HasValue ? $" {sample.Milliseconds.Value:0}ms" : string.Empty;
+    var extra = string.IsNullOrWhiteSpace(sample.Extra) ? string.Empty : $" | {Truncate(sample.Extra!, 120)}";
+    var line = $"{tag} {sample.Target} {status}{ms}{extra}";
         if (sample.Ok) LoggerHelper.LogInfo(line); else LoggerHelper.LogWarn(line);
     }
 

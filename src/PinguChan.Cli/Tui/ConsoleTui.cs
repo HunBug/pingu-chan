@@ -68,14 +68,13 @@ public sealed class ConsoleTui : ILogger, IDisposable
 
     private void MoveToLogArea_NoLock()
     {
-        // Scroll up by one line to make room for a new log line above the status area
+        // Scroll up by one line to make room for a new log, then write directly above the status area
         try
         {
             Console.SetCursorPosition(0, LastRow);
-            Console.WriteLine(); // this will scroll the buffer/window by one line
+            Console.WriteLine(); // this scrolls the window/buffer by one
         }
         catch { }
-        // Position cursor on the line just above the status area
         var row = Math.Max(0, BottomRow - 1);
         try { Console.SetCursorPosition(0, row); } catch { }
     }
