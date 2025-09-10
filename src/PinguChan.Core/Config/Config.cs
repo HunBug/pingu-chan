@@ -30,6 +30,7 @@ public sealed class SinksConfig
 {
     public string? Csv { get; set; } = "netwatch.csv";
     public string? Jsonl { get; set; } = "netwatch.jsonl";
+    public string? Logs { get; set; }
 }
 
 public static class ConfigLoader

@@ -1,5 +1,6 @@
 using System;
-using Microsoft.Extensions.Logging;
+using System.IO;
+using System.Text;
 
 namespace PinguChan.Cli.Tui;
 
@@ -7,14 +8,30 @@ namespace PinguChan.Cli.Tui;
 // - Implements ILogger to capture Core logs and render them with a bottom status area
 // - Provides Write/WriteLine for direct prints
 // - Maintains up to two status lines (line1, line2)
-public sealed class ConsoleTui : ILogger, IDisposable
+public interface ISimpleLogger
+{
+    void LogInfo(string message);
+    void LogWarn(string message);
+    void LogError(string message);
+}
+
+public sealed class ConsoleTui : ISimpleLogger, IDisposable
 {
     private readonly object _lock = new();
     private readonly string _name;
     private string _status1 = string.Empty;
     private string _status2 = string.Empty;
+    private readonly string? _logPath;
 
-    public ConsoleTui(string name = "tui") { _name = name; }
+    public ConsoleTui(string name = "tui", string? logPath = null)
+    {
+        _name = name;
+        _logPath = logPath;
+        if (!string.IsNullOrWhiteSpace(_logPath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_logPath!) ?? ".");
+        }
+    }
 
     public void SetStatus(string line1, string line2)
     {
@@ -32,6 +49,7 @@ public sealed class ConsoleTui : ILogger, IDisposable
         {
             MoveToLogArea_NoLock();
             Console.WriteLine(text);
+            WriteToFile_NoLock(text + "\n");
             RedrawStatus_NoLock();
         }
     }
@@ -42,23 +60,25 @@ public sealed class ConsoleTui : ILogger, IDisposable
         {
             MoveToLogArea_NoLock();
             Console.Write(text);
+            WriteToFile_NoLock(text);
             RedrawStatus_NoLock();
         }
     }
 
-    // ILogger implementation
-    IDisposable ILogger.BeginScope<TState>(TState state) => _NoopScope.Instance;
-    public bool IsEnabled(LogLevel logLevel) => true;
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    // Simple logging API used by LoggerHelper fallback
+    public void LogInfo(string message) => WriteLineWithLevel("INF", message);
+    public void LogWarn(string message) => WriteLineWithLevel("WRN", message);
+    public void LogError(string message) => WriteLineWithLevel("ERR", message);
+
+    private void WriteLineWithLevel(string lvl, string message)
     {
-        var line = formatter(state, exception);
-        if (exception != null) line += $"\n{exception}";
         lock (_lock)
         {
             MoveToLogArea_NoLock();
             var ts = DateTime.Now.ToString("HH:mm:ss");
-            var lvl = logLevel.ToString().ToUpperInvariant()[..Math.Min(3, logLevel.ToString().Length)];
-            Console.WriteLine($"{ts} [{lvl}] {line}");
+            var formatted = $"{ts} [{lvl}] {message}";
+            Console.WriteLine(formatted);
+            WriteToFile_NoLock(formatted + "\n");
             RedrawStatus_NoLock();
         }
     }
@@ -129,9 +149,26 @@ public sealed class ConsoleTui : ILogger, IDisposable
 
     public void Dispose() { }
 
+    private void WriteToFile_NoLock(string content)
+    {
+        if (string.IsNullOrWhiteSpace(_logPath)) return;
+        try { File.AppendAllText(_logPath!, content, Encoding.UTF8); } catch { }
+    }
+
     private sealed class _NoopScope : IDisposable
     {
         public static readonly _NoopScope Instance = new();
         public void Dispose() { }
     }
+}
+
+// Fan-out logger to multiple ILogger targets
+// Composite logger for ISimpleLogger
+public sealed class CompositeLogger : ISimpleLogger
+{
+    private readonly ISimpleLogger[] _targets;
+    public CompositeLogger(params ISimpleLogger[] targets) { _targets = targets; }
+    public void LogInfo(string message) { foreach (var t in _targets) t.LogInfo(message); }
+    public void LogWarn(string message) { foreach (var t in _targets) t.LogWarn(message); }
+    public void LogError(string message) { foreach (var t in _targets) t.LogError(message); }
 }

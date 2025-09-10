@@ -16,3 +16,5 @@ targets:
 sinks:
   csv: netwatch.csv
   jsonl: netwatch.jsonl
+  # optional: write human-readable logs, too
+  logs: pingu.log

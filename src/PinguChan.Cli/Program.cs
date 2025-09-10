@@ -5,6 +5,8 @@ using PinguChan.Core.Sinks;
 using PinguChan.Cli;
 using PinguChan.Core.Config;
 using PinguChan.Cli.Tui;
+using PinguChan.Core.Collectors;
+using PinguChan.Cli.Sudo;
 
 // Minimal wiring without Host (no external packages required)
 // TODO: integrate Microsoft.Extensions.* when NuGet is available.
@@ -22,6 +24,16 @@ foreach (var t in cfg.Targets.Ping) probes.Add(new PingProbe(t, pingInt));
 foreach (var t in cfg.Targets.Dns) probes.Add(new DnsProbe(t, dnsInt));
 foreach (var t in cfg.Targets.Http) probes.Add(new HttpProbe(t, httpInt));
 
+// Collectors (diagnostics)
+var collectors = new List<ICollector>
+{
+	new NetIfCollector(TimeSpan.FromMinutes(5)),
+	new RouteCollector(TimeSpan.FromMinutes(5)),
+	new FirewallCollector(TimeSpan.FromMinutes(10)),
+	new TracerouteCollector(TimeSpan.FromMinutes(30)),
+	new InternetConnectivityCollector(TimeSpan.FromMinutes(1))
+};
+
 var sinks = new List<IResultSink>();
 var baseDir = AppContext.BaseDirectory;
 if (!string.IsNullOrWhiteSpace(cfg.Sinks.Csv)) sinks.Add(new CsvSink(Path.Combine(baseDir, cfg.Sinks.Csv!)));
@@ -30,6 +42,7 @@ if (!string.IsNullOrWhiteSpace(cfg.Sinks.Jsonl)) sinks.Add(new JsonlSink(Path.Co
 var durationArg = args.SkipWhile(a => a != "--duration").Skip(1).FirstOrDefault();
 var once = args.Contains("--once");
 var diagnose = args.Contains("diagnose");
+var askSudo = args.Contains("--sudo");
 TimeSpan? duration = null;
 if (TimeSpan.TryParse(durationArg, out var d)) duration = d;
 
@@ -37,8 +50,14 @@ if (diagnose)
 {
 	// quick one-shot: environment + capabilities + run each probe once
 	PrintEnv();
+	if (askSudo && SudoHelper.IsUnixLike)
+	{
+		Console.WriteLine("Requesting sudo for extended diagnostics (optional)...");
+		var ok = SudoHelper.TryElevateInteractive();
+		Console.WriteLine(ok ? "sudo cached." : "sudo not available or canceled.");
+	}
 	await PrintCapabilitiesAsync();
-	await using var diagHost = new MonitorHost(probes, sinks);
+	await using var diagHost = new MonitorHost(probes, collectors, sinks);
 	await diagHost.RunAsync(duration: null, once: true);
 	return;
 }
@@ -57,8 +76,16 @@ else
 {
 	Console.WriteLine($"Starting monitoring for duration: {duration.Value}.");
 }
+if (askSudo && SudoHelper.IsUnixLike)
+{
+	Console.WriteLine("Requesting sudo for extended monitoring (optional)...");
+	var ok = SudoHelper.TryElevateInteractive();
+	Console.WriteLine(ok ? "sudo cached." : "sudo not available or canceled.");
+}
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
-var tui = new ConsoleTui();
+var tui = string.IsNullOrWhiteSpace(cfg.Sinks.Logs)
+	? new ConsoleTui()
+	: new ConsoleTui(logPath: (Path.IsPathRooted(cfg.Sinks.Logs!) ? cfg.Sinks.Logs! : Path.Combine(AppContext.BaseDirectory, cfg.Sinks.Logs!)));
 PinguChan.Core.Runtime.LoggerHelper.ExternalLogger = tui;
 var renderer = Task.Run(async () =>
 {
@@ -82,7 +109,7 @@ var renderer = Task.Run(async () =>
 	}
 });
 
-await using var host = new MonitorHost(probes, sinks) { SummaryInterval = TimeSpan.FromSeconds(30) };
+await using var host = new MonitorHost(probes, collectors, sinks) { SummaryInterval = TimeSpan.FromSeconds(30) };
 var stopRequested = false;
 Console.CancelKeyPress += async (_, e) =>
 {

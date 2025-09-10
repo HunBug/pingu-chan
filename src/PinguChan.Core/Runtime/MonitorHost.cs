@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
+using System.Reflection;
 using System.Threading.Channels;
 using PinguChan.Core.Models;
 
@@ -8,6 +8,7 @@ namespace PinguChan.Core.Runtime;
 public sealed class MonitorHost : IAsyncDisposable
 {
     private readonly IReadOnlyList<IProbe> _probes;
+    private readonly IReadOnlyList<ICollector> _collectors;
     private readonly IReadOnlyList<IResultSink> _sinks;
     private readonly Channel<NetSample> _bus = Channel.CreateBounded<NetSample>(new BoundedChannelOptions(1024)
     {
@@ -24,6 +25,14 @@ public sealed class MonitorHost : IAsyncDisposable
     {
         _probes = probes.ToList();
         _sinks = sinks.ToList();
+        _collectors = Array.Empty<ICollector>();
+    }
+
+    public MonitorHost(IEnumerable<IProbe> probes, IEnumerable<ICollector> collectors, IEnumerable<IResultSink> sinks)
+    {
+        _probes = probes.ToList();
+        _collectors = collectors.ToList();
+        _sinks = sinks.ToList();
     }
 
     public async Task RunAsync(TimeSpan? duration = null, bool once = false)
@@ -35,6 +44,11 @@ public sealed class MonitorHost : IAsyncDisposable
         foreach (var probe in _probes)
         {
             _workers.Add(Task.Run(() => ProbeLoop(probe)));
+        }
+        // collectors
+        foreach (var collector in _collectors)
+        {
+            _workers.Add(Task.Run(() => CollectorLoop(collector)));
         }
     // summaries disabled for now; live stats are shown by the CLI renderer
 
@@ -88,6 +102,32 @@ public sealed class MonitorHost : IAsyncDisposable
             }
             var elapsed = DateTime.UtcNow - t0;
             var delay = probe.Interval - elapsed;
+            if (delay > TimeSpan.Zero)
+            {
+                try { await Task.Delay(delay, _cts.Token); } catch { }
+            }
+        }
+    }
+
+    private async Task CollectorLoop(ICollector collector)
+    {
+        while (!_cts.IsCancellationRequested)
+        {
+            var t0 = DateTime.UtcNow;
+            try
+            {
+                var samples = await collector.CollectAsync(_cts.Token);
+                foreach (var sample in samples)
+                {
+                    await _bus.Writer.WriteAsync(sample, _cts.Token);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerHelper.LogWarn($"Collector {collector.Id} failed: {ex.Message}");
+            }
+            var elapsed = DateTime.UtcNow - t0;
+            var delay = collector.Interval - elapsed;
             if (delay > TimeSpan.Zero)
             {
                 try { await Task.Delay(delay, _cts.Token); } catch { }
@@ -157,20 +197,34 @@ public sealed class MonitorHost : IAsyncDisposable
 public static class LoggerHelper
 {
     public static readonly object ConsoleSync = new();
-    public static ILogger? ExternalLogger { get; set; }
+    public static object? ExternalLogger { get; set; }
     public static void LogInfo(string message)
     {
-    if (ExternalLogger is not null) { ExternalLogger.Log(LogLevel.Information, default, message, null, (s, _) => s!); return; }
+        if (TryExternal("LogInfo", message)) return;
         lock (ConsoleSync) { Console.WriteLine($"{DateTime.Now:HH:mm:ss} [INF] {message}"); }
     }
     public static void LogWarn(string message)
     {
-    if (ExternalLogger is not null) { ExternalLogger.Log(LogLevel.Warning, default, message, null, (s, _) => s!); return; }
+        if (TryExternal("LogWarn", message)) return;
         lock (ConsoleSync) { Console.WriteLine($"{DateTime.Now:HH:mm:ss} [WRN] {message}"); }
     }
     public static void LogError(string message)
     {
-    if (ExternalLogger is not null) { ExternalLogger.Log(LogLevel.Error, default, message, null, (s, _) => s!); return; }
+        if (TryExternal("LogError", message)) return;
         lock (ConsoleSync) { Console.WriteLine($"{DateTime.Now:HH:mm:ss} [ERR] {message}"); }
+    }
+
+    private static bool TryExternal(string method, string message)
+    {
+        var logger = ExternalLogger;
+        if (logger is null) return false;
+        try
+        {
+            var mi = logger.GetType().GetMethod(method, BindingFlags.Public | BindingFlags.Instance);
+            if (mi is null) return false;
+            mi.Invoke(logger, new object?[] { message });
+            return true;
+        }
+        catch { return false; }
     }
 }
