@@ -31,6 +31,9 @@ public sealed class SinksConfig
     public string? Csv { get; set; } = "netwatch.csv";
     public string? Jsonl { get; set; } = "netwatch.jsonl";
     public string? Logs { get; set; }
+    // If true (default), append a timestamp to sink filenames so each run writes a new file.
+    // When false, files are appended like today.
+    public bool AppendTimestamp { get; set; } = true;
 }
 
 public static class ConfigLoader

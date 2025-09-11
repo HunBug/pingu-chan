@@ -305,6 +305,86 @@ Core uses a minimal LoggerHelper to forward logs to a simple logger implemented 
 
 ---
 
+## Destination pools, rotation, and etiquette (proposed)
+
+To be a good network citizen and improve the quality of measurements, probes should select from destination pools using rotation, jitter, and backoff with per-target limits.
+
+### Config schema additions
+
+```yaml
+pools:
+  ping:
+    - host: gateway         # special token → default route
+      weight: 3
+      min_interval: 5s
+    - host: 1.1.1.1
+      weight: 2
+      min_interval: 10s
+    - host: 8.8.8.8
+      weight: 2
+      min_interval: 10s
+    - host: 9.9.9.9
+      weight: 1
+      min_interval: 15s
+  dns:
+    resolvers: [1.1.1.1, 8.8.8.8]
+    domains:
+      - name: github.com
+        weight: 2
+      - name: wikipedia.org
+        weight: 1
+  http:
+    - url: https://www.google.com/generate_204
+      method: HEAD
+      weight: 3
+      min_interval: 1m
+    - url: https://httpbin.org/status/204
+      method: HEAD
+      weight: 1
+      min_interval: 2m
+    - url: https://example.com/
+      method: HEAD
+      weight: 1
+      min_interval: 5m
+
+scheduler:
+  jitter_pct: 0.2                   # ±20% jitter applied to intervals
+  failure_backoff:
+    base: 2.0                       # exponential backoff multiplier
+    max_multiplier: 8               # cap the backoff
+  per_target_concurrency: 1         # avoid parallel hits to same host
+  rotate_strategy: weighted_random  # or round_robin
+
+etiquette:
+  traceroute_min_interval: 15m
+  http_user_agent: "Pingu-chan/1.x (+https://github.com/HunBug/pingu-chan)"
+  prefer_local_first: true          # gateway + resolver preferred scheduling
+```
+
+### Runtime behavior
+- Build per-kind pools at startup (and when config is reloaded).
+- Each iteration selects a target using weighted random (or RR), respecting per-target `min_interval`.
+- Apply jitter to base intervals; on failure, apply exponential backoff per target up to the configured cap.
+- Limit concurrent requests per host to 1 to avoid burstiness.
+- For HTTP, prefer HEAD where possible and set a descriptive User-Agent from config.
+- For traceroute, enforce a separate (coarse) scheduler with a high minimum interval.
+
+### Hot reload (optional)
+- Watch the config file; on change, atomically swap pool definitions and scheduler parameters without dropping in-flight tasks.
+- Preserve per-target backoff state across reloads by keying on host/URL.
+
+### Observability
+- Emit periodic scheduler diagnostics: last rotation order, targets skipped due to `min_interval`, current backoff per target.
+- Include pool name and target key in `NetSample.Extra` for offline analysis.
+
+### Safety rails
+- Absolute floor for intervals (e.g., ping ≥ 1s, DNS ≥ 2s, HTTP ≥ 30s) even if misconfigured lower.
+- Deny-list and allow-list hooks in config to block/force certain hosts.
+
+See `docs/DESTINATION_POOLS.md` for curated examples and guidance.
+
+---
+
 ## Implementation Plan (Milestones)
 
 ### M0 — Repo scaffolding

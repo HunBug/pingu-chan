@@ -56,6 +56,8 @@ sinks:
 	jsonl: netwatch.jsonl
 	# optional: write readable logs to a file too
 	logs: pingu.log
+	# if true (default), add _YYYYMMDD_HHMMSS to filenames so each run creates new files
+	appendTimestamp: true
 ```
 
 JSON config is also supported with the same schema.
@@ -65,6 +67,7 @@ JSON config is also supported with the same schema.
 - CSV: appended with header, suitable for spreadsheets and quick inspection.
 - JSONL: one JSON object per line, easy to ingest into tools or databases.
 - Logs (optional): human-readable lines (same as console), if `sinks.logs` is configured.
+	- When rolling-window health crosses thresholds (e.g., ping loss >= 5% over 1m), WARN markers are printed and also saved to CSV/JSONL as RuleFinding records to help locate glitches by timestamp.
 
 Default file locations are relative to the executable’s directory. Use absolute paths if you want to write elsewhere.
 
@@ -87,3 +90,18 @@ These are printed to console/logs and exported to sinks with a compact JSON payl
 - Sensitive values (tokens/URLs) are not logged beyond hostnames and basic timings.
 - `--sudo` is optional; without it, privileged diagnostics simply report FAIL but normal monitoring continues.
 - See `DESIGN.md` and `docs/IMPLEMENTATION_PLAN.md` for architecture and roadmap.
+
+## Responsible use & network etiquette
+
+Pingu-chan is polite. Please be too.
+
+- Prefer local/first-party destinations: your default gateway and configured DNS resolver are ideal for frequent checks.
+- Keep rates low and add jitter: e.g., ping every 5–30s per target with ±20% jitter; DNS every 10–60s; HTTP every 1–5 minutes.
+- Rotate public targets: don’t hammer a single company. Use a pool with weights and random rotation.
+- Back off on failure: exponential backoff (e.g., 2x up to a cap) reduces burst load during outages.
+- Use lightweight requests: HTTP HEAD or a tiny 204 endpoint; include a descriptive User-Agent.
+- Run traceroute sparingly: e.g., once every 15–60 minutes; it’s noisy and can trip IDS.
+- Respect ToS and policies: in corporate or shared networks, get permission and provide an allow/deny list.
+- Redact and log responsibly: avoid secrets in hostnames/URLs; Pingu-chan logs only metadata and timings.
+
+See `docs/DESTINATION_POOLS.md` for curated test destinations and rotation guidance.

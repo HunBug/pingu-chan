@@ -76,9 +76,23 @@ public sealed class ConsoleTui : ISimpleLogger, IDisposable
         {
             MoveToLogArea_NoLock();
             var ts = DateTime.Now.ToString("HH:mm:ss");
-            var formatted = $"{ts} [{lvl}] {message}";
-            Console.WriteLine(formatted);
-            WriteToFile_NoLock(formatted + "\n");
+            // Plain formatted text for file output
+            var plain = $"{ts} [{lvl}] {message}";
+            // Console: color the [LVL] token and value tokens in the message
+            Console.Write(ts + " ");
+            var prev = Console.ForegroundColor;
+            Console.ForegroundColor = lvl switch
+            {
+                "WRN" => ConsoleColor.Yellow,
+                "ERR" => ConsoleColor.Red,
+                _ => prev
+            };
+            Console.Write($"[{lvl}]");
+            Console.ForegroundColor = prev;
+            Console.Write(' ');
+            WriteColoredTokens_NoLock(message);
+            Console.WriteLine();
+            WriteToFile_NoLock(plain + "\n");
             RedrawStatus_NoLock();
         }
     }
@@ -118,18 +132,19 @@ public sealed class ConsoleTui : ISimpleLogger, IDisposable
         var available = Console.WindowWidth;
         var plain = text ?? string.Empty;
         // Write text
-        WriteColored_NoLock(plain);
+        WriteColoredTokens_NoLock(plain);
         // Pad remainder
         var pad = Math.Max(0, available - plain.Length);
         if (pad > 0) Console.Write(new string(' ', pad));
     }
 
-    private void WriteColored_NoLock(string text)
+    private void WriteColoredTokens_NoLock(string text)
     {
         var parts = (text ?? string.Empty).Split(' ');
         for (int i = 0; i < parts.Length; i++)
         {
             var p = parts[i];
+            // Percent tokens
             if (p.EndsWith("%", StringComparison.Ordinal) && double.TryParse(p.TrimEnd('%'), out var val))
             {
                 var prev = Console.ForegroundColor;
@@ -142,9 +157,60 @@ public sealed class ConsoleTui : ISimpleLogger, IDisposable
                 Console.Write(p);
                 Console.ForegroundColor = prev;
             }
+            // Millisecond tokens (e.g., 20ms, avg=17ms, p95=350ms)
+            else if (TryParseMs(p, out var msVal, out var prefix, out var suffix))
+            {
+                // write prefix (e.g., "avg=")
+                if (!string.IsNullOrEmpty(prefix)) Console.Write(prefix);
+                var prev = Console.ForegroundColor;
+                Console.ForegroundColor = msVal switch
+                {
+                    < 50 => ConsoleColor.Green,
+                    < 200 => ConsoleColor.Yellow,
+                    _ => ConsoleColor.Red
+                };
+                Console.Write($"{msVal:F0}ms");
+                Console.ForegroundColor = prev;
+                if (!string.IsNullOrEmpty(suffix)) Console.Write(suffix);
+            }
+            // OK/FAIL tokens
+            else if (string.Equals(p, "OK", StringComparison.OrdinalIgnoreCase))
+            {
+                var prev = Console.ForegroundColor; Console.ForegroundColor = ConsoleColor.Green; Console.Write(p); Console.ForegroundColor = prev;
+            }
+            else if (string.Equals(p, "FAIL", StringComparison.OrdinalIgnoreCase))
+            {
+                var prev = Console.ForegroundColor; Console.ForegroundColor = ConsoleColor.Red; Console.Write(p); Console.ForegroundColor = prev;
+            }
             else Console.Write(p);
             if (i < parts.Length - 1) Console.Write(' ');
         }
+    }
+
+    private static bool TryParseMs(string token, out double value, out string prefix, out string suffix)
+    {
+        value = 0; prefix = string.Empty; suffix = string.Empty;
+        if (!token.Contains("ms", StringComparison.Ordinal)) return false;
+        var t = token;
+        // handle prefixes like avg= or p95=
+        var idxEq = t.IndexOf('=');
+        if (idxEq >= 0)
+        {
+            prefix = t.Substring(0, idxEq + 1);
+            t = t.Substring(idxEq + 1);
+        }
+        // strip trailing punctuation (like ")" or ",")
+        var trail = new List<char>();
+        while (t.Length > 0 && !char.IsDigit(t[^1]) && t[^1] != 's')
+        {
+            trail.Insert(0, t[^1]);
+            t = t[..^1];
+        }
+        suffix = new string(trail.ToArray());
+        if (!t.EndsWith("ms", StringComparison.Ordinal)) return false;
+        var num = t[..^2];
+        if (double.TryParse(num, out var v)) { value = v; return true; }
+        return false;
     }
 
     public void Dispose() { }

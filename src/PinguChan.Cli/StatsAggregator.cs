@@ -88,6 +88,44 @@ public sealed class StatsAggregator
         return (line1, line2);
     }
 
+    // Expose rolling-window stats for alerting
+    public IEnumerable<(string target, double lossPct, int count, double? avgMs)> GetPingWindowStats()
+    {
+        foreach (var kv in _byTarget.OrderBy(k => k.Key))
+        {
+            var arr = kv.Value.ToArray();
+            if (arr.Length == 0) continue;
+            var ok = arr.Count(s => s.Ok);
+            var loss = 100.0 * (arr.Length - ok) / Math.Max(1, arr.Length);
+            var ms = arr.Where(s => s.Ok && s.Milliseconds.HasValue).Select(s => s.Milliseconds!.Value).ToArray();
+            var avg = ms.Length > 0 ? ms.Average() : (double?)null;
+            yield return (kv.Key, loss, arr.Length, avg);
+        }
+    }
+
+    public (double failPct, int total, double? p95) GetDnsWindowStats()
+    {
+        var dnsArr = _dns.ToArray();
+        if (dnsArr.Length == 0) return (0, 0, null);
+        var ok = dnsArr.Count(s => s.Ok);
+        var failPct = 100.0 * (dnsArr.Length - ok) / Math.Max(1, dnsArr.Length);
+        var ms = dnsArr.Where(s => s.Ok && s.Milliseconds.HasValue).Select(s => s.Milliseconds!.Value).OrderBy(x => x).ToArray();
+        var p95 = Percentile(ms, 0.95);
+        return (failPct, dnsArr.Length, p95);
+    }
+
+    public (int ok, int fail, double? p50, double? p95) GetHttpWindowStats()
+    {
+        var httpArr = _http.ToArray();
+        if (httpArr.Length == 0) return (0, 0, null, null);
+        var ok = httpArr.Count(s => s.Ok);
+        var fail = httpArr.Length - ok;
+        var ms = httpArr.Where(s => s.Ok && s.Milliseconds.HasValue).Select(s => s.Milliseconds!.Value).OrderBy(x => x).ToArray();
+        var p50 = Percentile(ms, 0.50);
+        var p95 = Percentile(ms, 0.95);
+        return (ok, fail, p50, p95);
+    }
+
     private static double? Percentile(double[] sorted, double p)
     {
         if (sorted == null || sorted.Length == 0) return null;
