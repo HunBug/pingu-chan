@@ -61,21 +61,43 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
     - Rolling stats window mixing targets or wrong keying
     - Probe result mapping not tagging target correctly (e.g., shared label)
   - Plan:
-    - Add unit tests: per-target loss tracking; simulate failures on multiple targets and assert both surfaces
-    - After orchestrator scheduler and stats move, re-check using pools with ≥2 ping targets
-    - Add a sanity logger: on each ping sample, log target key + ok/fail and ensure both targets appear during test run
+    - [ ] Add unit tests: per-target loss tracking; simulate failures on multiple targets and assert both surfaces
+    - [ ] After orchestrator scheduler and stats move, re-check using pools with ≥2 ping targets
+    - [ ] Add a sanity logger: on each ping sample, log target key + ok/fail and ensure both targets appear during test run
 
 ## Test plan (initial)
 
-- Unit tests
-  - TargetPools: rotation, min_interval, backoff growth/decay, jitter bounds
-  - StatsService: per-kind/target windows, fail% calculation, p50/p95
-  - Rules: ConsecutiveFail/Quorum
-  - Triggers: debounce/cooldown firing
-  - Sinks: write/read of NetSample and RuleFinding
-- Smoke tests
-  - CLI run with 2+ ping targets in pools; verify both generate samples and loss is tracked per target
-  - Simulate transient failures (mock PingProbe) and assert findings emitted only with gating
+- [ ] Unit tests
+  - [ ] TargetPools: rotation, min_interval, backoff growth/decay, jitter bounds
+  - [ ] StatsService: per-kind/target windows, fail% calculation, p50/p95
+  - [ ] Rules: ConsecutiveFail/Quorum
+  - [ ] Triggers: debounce/cooldown firing
+  - [ ] Sinks: write/read of NetSample and RuleFinding
+- [ ] Smoke tests
+  - [ ] CLI run with 2+ ping targets in pools; verify both generate samples and loss is tracked per target
+  - [ ] Simulate transient failures (mock PingProbe) and assert findings emitted only with gating
+
+## Next few days (actual steps)
+
+Day 1
+- [ ] Create PinguChan.Orchestration project (empty), add to solution
+- [ ] Define interfaces: ITargetPools, IStatsService, IRulesService, ITriggerEngine
+- [ ] Add MonitorOrchestrator with Start/Stop and stub streams
+
+Day 2
+- [ ] Implement basic TargetPools with weighted rotation + min_interval + jitter
+- [ ] Wire a minimal scheduler loop that cycles ping targets and emits samples to the Core bus
+- [ ] Add unit tests for rotation/min_interval/jitter
+
+Day 3
+- [ ] Add failure backoff and per-target concurrency guard
+- [ ] Port minimal StatsAggregator into IStatsService (1m window) and tests
+- [ ] Add Known Issue unit test for per-target loss tracking
+
+Day 4
+- [ ] Add RuleFinding channel in Core and sinks write-path
+- [ ] Emit a simple threshold rule via RulesService; CLI subscribes to findings for WARN lines
+- [ ] Quick smoke: pools rotate, findings appear; note any regressions in DEV_TASKS
 
 ## Notes
 - Destination pools must rotate; on error streaks, re-check current target (backoff-aware) and also probe others to localize scope.
