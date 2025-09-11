@@ -119,8 +119,9 @@ This replaces scattered planning docs while keeping them available for historica
 
 ## Documentation index
 
-- DESIGN.md — Architecture reference. Describes the Core vs Orchestration split, key components, interfaces, and data flow. Benefit: shared mental model and stable contracts for contributors across CLI/GUI/Remote.
-- IMPLEMENTATION.md — Concise plan and guidelines. Summarizes what’s done, coding/product guidelines, and the phased plan for orchestration, pools/rotation, triggers, and rules. Benefit: aligns sequencing and acceptance criteria; speeds up reviews and onboarding.
+- docs/DESIGN.md — Architecture reference. Describes the Core vs Orchestration split, key components, interfaces, and data flow. Benefit: shared mental model and stable contracts for contributors across CLI/GUI/Remote.
+- docs/IMPLEMENTATION.md — Concise plan and guidelines. Summarizes what’s done, coding/product guidelines, and the phased plan for orchestration, pools/rotation, triggers, and rules. Benefit: aligns sequencing and acceptance criteria; speeds up reviews and onboarding.
 - docs/DESTINATION_POOLS.md — Curated test destinations and rotation etiquette. Benefit: responsible usage, reproducible monitoring, and reduced load on third‑party services.
+- docs/DEV_TASKS.md — Temporary development taskboard. Tracks refactor milestones, issues, and test coverage during implementation. Benefit: shared progress and priorities for the team; disposable after stabilization.
 
 Archived planning docs live under docs/archive/ for historical context.
