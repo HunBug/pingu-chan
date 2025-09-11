@@ -38,8 +38,12 @@ public sealed class MonitorHost : IAsyncDisposable
     public async Task RunAsync(TimeSpan? duration = null, bool once = false)
     {
         LoggerHelper.LogInfo($"Starting monitor with {_probes.Count} probes");
-        // writer
-        _workers.Add(Task.Run(WriterLoop));
+    // writer for internal bus
+    _workers.Add(Task.Run(WriterLoop));
+    // writer for orchestration samples bus
+    _workers.Add(Task.Run(SamplesWriterLoop));
+    // findings writer
+    _workers.Add(Task.Run(FindingsWriterLoop));
         // probes
         foreach (var probe in _probes)
         {
@@ -150,6 +154,40 @@ public sealed class MonitorHost : IAsyncDisposable
         }
     }
 
+    private async Task FindingsWriterLoop()
+    {
+        try
+        {
+            await foreach (var finding in FindingsBus.ReadAllAsync(_cts.Token))
+            {
+                foreach (var sink in _sinks)
+                {
+                    try { await sink.WriteAsync(finding, CancellationToken.None); }
+                    catch (Exception ex) { LoggerHelper.LogError($"Finding write failed: {ex.Message}"); }
+                }
+                LoggerHelper.LogWarn($"FINDING {finding.RuleId}: {finding.Message}");
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task SamplesWriterLoop()
+    {
+        try
+        {
+            await foreach (var sample in SamplesBus.ReadAllAsync(_cts.Token))
+            {
+                foreach (var sink in _sinks)
+                {
+                    try { await sink.WriteAsync(sample, CancellationToken.None); }
+                    catch (Exception ex) { LoggerHelper.LogError($"Sink write failed (orchestrated): {ex.Message}"); }
+                }
+                LogSample(sample);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
     private static void LogSample(NetSample sample)
     {
         var kind = sample.Kind.ToString().ToUpperInvariant();
@@ -176,9 +214,9 @@ public sealed class MonitorHost : IAsyncDisposable
         _stopping = true;
         // Stop producer loops (probes/summary)
         _cts.Cancel();
-        // Complete channel to let writer drain and finish
-        _bus.Writer.TryComplete();
-        try { await Task.WhenAll(_workers); } catch { }
+    // Complete internal channel and cancel readers
+    _bus.Writer.TryComplete();
+    try { await Task.WhenAll(_workers); } catch (OperationCanceledException) { } catch { }
         foreach (var sink in _sinks.OfType<IAsyncDisposable>())
         {
             try { await sink.DisposeAsync(); } catch { }

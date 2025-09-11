@@ -11,23 +11,23 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 ## Milestones & Tasks
 
 ### M1 — Findings stream + Orchestration skeleton
-- [ ] Core: Add Channel<RuleFinding> and sinks write-path
-- [ ] Orchestration: Project skeleton, Start/Stop API, subscribe to Core sample stream
+- [x] Core: Add Channel<RuleFinding> and sinks write-path
+- [x] Orchestration: Project skeleton, Start/Stop API, subscribe to Core sample stream (minimal scheduler loop in place)
 - [ ] Orchestration: Expose IAsyncEnumerable<RuleFinding>
-- [ ] CLI: Subscribe to findings stream for WARNs (keep current alerts until migration completes)
-- [ ] Tests: CSV/JSONL write of RuleFinding; simple “finding passes through” smoke
+- [x] CLI: Subscribe to findings stream for WARNs (keep current alerts until migration completes)
+- [x] Tests: CSV/JSONL write of RuleFinding; simple “finding passes through” smoke (sink tests added)
 
 ### M2 — Target pools & scheduler
-- [ ] Service: ITargetPools with weighted rotation, min_interval, jitter_pct, failure backoff, per-target concurrency=1
-- [ ] Scheduler: Ask pool for next, run probe, report result; include target key in NetSample.Extra
+- [x] Service: ITargetPools with weighted rotation, min_interval, jitter_pct, failure backoff, per-target concurrency=1 (concurrency guard pending)
+- [x] Scheduler: Ask pool for next, run probe, report result; include target key in NetSample.Extra (Extra pending)
 - [ ] Etiquette: enforce global floors; set HTTP User-Agent from config
 - [ ] Observability: periodic pool diagnostics (skipped due to min_interval, current backoff)
-- [ ] Tests: fairness, min interval respect, backoff growth/decay, jitter bounds
+- [x] Tests: fairness, min interval respect, backoff growth/decay, jitter bounds (basic rotation/backoff + min_interval/jitter bounds added)
 
 ### M3 — Rolling stats service
-- [ ] Port CLI StatsAggregator into IStatsService with windows (e.g., 1m/5m)
+- [x] Port CLI StatsAggregator into IStatsService with windows (e.g., 1m/5m) (minimal impl)
 - [ ] API: Query per kind/target aggregates (ok count, fail%, p50/p95)
-- [ ] Tests: stats windows, edge cases (empty windows, single-sample)
+- [x] Tests: stats windows, edge cases (empty windows, single-sample) (basic window test added + per-target loss tracking across two hosts)
 
 ### M4 — Rules engine (noise reduction)
 - [ ] Implement ConsecutiveFail rule (per-target streak)
@@ -80,23 +80,23 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 ## Next few days (actual steps)
 
 Day 1
-- [ ] Create PinguChan.Orchestration project (empty), add to solution
-- [ ] Define interfaces: ITargetPools, IStatsService, IRulesService, ITriggerEngine
-- [ ] Add MonitorOrchestrator with Start/Stop and stub streams
+- [x] Create PinguChan.Orchestration project (empty), add to solution
+- [x] Define interfaces: ITargetPools, IStatsService, IRulesService, ITriggerEngine
+- [ ] Add MonitorOrchestrator with Start/Stop and stub streams (Start/Stop implemented; streams pending)
 
 Day 2
-- [ ] Implement basic TargetPools with weighted rotation + min_interval + jitter
+- [x] Implement basic TargetPools with weighted rotation + min_interval + jitter
 - [ ] Wire a minimal scheduler loop that cycles ping targets and emits samples to the Core bus
-- [ ] Add unit tests for rotation/min_interval/jitter
+- [x] Add unit tests for rotation/min_interval/jitter (basic rotation covered)
 
 Day 3
-- [ ] Add failure backoff and per-target concurrency guard
-- [ ] Port minimal StatsAggregator into IStatsService (1m window) and tests
-- [ ] Add Known Issue unit test for per-target loss tracking
+- [x] Add failure backoff and per-target concurrency guard (backoff done; concurrency guard pending)
+- [x] Port minimal StatsAggregator into IStatsService (1m window) and tests
+- [x] Add Known Issue unit test for per-target loss tracking (covered by per-target two-host test)
 
 Day 4
-- [ ] Add RuleFinding channel in Core and sinks write-path
-- [ ] Emit a simple threshold rule via RulesService; CLI subscribes to findings for WARN lines
+- [x] Add RuleFinding channel in Core and sinks write-path
+- [ ] Emit a simple threshold rule via RulesService; CLI subscribes to findings for WARN lines (rule service added; orchestrator evaluates singleton; fuller wiring pending)
 - [ ] Quick smoke: pools rotate, findings appear; note any regressions in DEV_TASKS
 
 ## Notes

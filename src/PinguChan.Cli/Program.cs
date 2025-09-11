@@ -12,6 +12,10 @@ using PinguChan.Cli.Sudo;
 // Minimal wiring without Host (no external packages required)
 // TODO: integrate Microsoft.Extensions.* when NuGet is available.
 
+// Cute welcome banner
+PrintWelcome();
+await PrintPrivilegeSummaryAsync();
+
 // Load config (YAML or JSON). Defaults applied if file missing.
 var configPath = args.SkipWhile(a => a != "--config").Skip(1).FirstOrDefault();
 var cfg = ConfigLoader.LoadFromFile(configPath);
@@ -73,12 +77,7 @@ if (diagnose)
 {
 	// quick one-shot: environment + capabilities + run each probe once
 	PrintEnv();
-	if (askSudo && SudoHelper.IsUnixLike)
-	{
-		Console.WriteLine("Requesting sudo for extended diagnostics (optional)...");
-		var ok = SudoHelper.TryElevateInteractive();
-		Console.WriteLine(ok ? "sudo cached." : "sudo not available or canceled.");
-	}
+	// no interactive sudo; just report privileges
 	await PrintCapabilitiesAsync();
 	await using var diagHost = new MonitorHost(probes, collectors, sinks);
 	await diagHost.RunAsync(duration: null, once: true);
@@ -99,17 +98,21 @@ else
 {
 	Console.WriteLine($"Starting monitoring for duration: {duration.Value}.");
 }
-if (askSudo && SudoHelper.IsUnixLike)
-{
-	Console.WriteLine("Requesting sudo for extended monitoring (optional)...");
-	var ok = SudoHelper.TryElevateInteractive();
-	Console.WriteLine(ok ? "sudo cached." : "sudo not available or canceled.");
-}
+// no interactive sudo; just report privileges
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 var tui = string.IsNullOrWhiteSpace(cfg.Sinks.Logs)
 	? new ConsoleTui()
 	: new ConsoleTui(logPath: (Path.IsPathRooted(cfg.Sinks.Logs!) ? WithTs(cfg.Sinks.Logs!) : WithTs(Path.Combine(AppContext.BaseDirectory, cfg.Sinks.Logs!))));
 PinguChan.Core.Runtime.LoggerHelper.ExternalLogger = tui;
+// Background task to surface findings
+var findingsCts = new CancellationTokenSource();
+var findingsTask = Task.Run(async () =>
+{
+	await foreach (var f in PinguChan.Core.Runtime.FindingsBus.ReadAllAsync(findingsCts.Token))
+	{
+		tui.LogWarn($"{f.Timestamp:HH:mm:ss} [{f.Severity}] {f.RuleId}: {f.Message}");
+	}
+});
 var renderer = Task.Run(async () =>
 {
 	var lastAlert = new Dictionary<string, DateTimeOffset>();
@@ -179,11 +182,15 @@ Console.CancelKeyPress += async (_, e) =>
 	stopRequested = true;
 	e.Cancel = true;
 	cts.Cancel();
+	findingsCts.Cancel();
 	await host.StopAsync();
 };
 await host.RunAsync(duration, once);
 cts.Cancel();
+findingsCts.Cancel();
 await renderer;
+findingsCts.Cancel();
+try { await findingsTask; } catch { }
 
 
 static void PrintEnv()
@@ -203,3 +210,45 @@ static async Task PrintCapabilitiesAsync()
 }
 
 // color writing handled by ConsoleTui
+
+static void PrintWelcome()
+{
+	// Keep it short and cute.
+	Console.WriteLine("====================");
+	Console.WriteLine(" Pingu-chan 🐧💢");
+	Console.WriteLine(" Network watcher & tsundere assistant");
+	Console.WriteLine("====================\n");
+}
+
+static async Task PrintPrivilegeSummaryAsync()
+{
+	try
+	{
+		using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+		var caps = await PinguChan.Core.Capabilities.CapabilityScanner.ScanAsync(cts.Token);
+		var icmp = caps.FirstOrDefault(c => c.Id == "icmp_raw");
+		var elevated = IsElevated();
+		Console.WriteLine($"Privileges: elevated {(elevated ? "yes" : "no")}" + (OperatingSystem.IsLinux() ? " (uid)" : string.Empty));
+		if (icmp is not null)
+			Console.WriteLine($"Privileges: raw ping {(icmp.Available ? "available" : "not available")}" + (icmp.RequiresSudo ? " (sudo suggested)" : string.Empty));
+	}
+	catch { }
+}
+
+static bool IsElevated()
+{
+	try
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+			var principal = new System.Security.Principal.WindowsPrincipal(id);
+			return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+		}
+		// Best-effort on Unix
+		return Environment.UserName == "root";
+	}
+	catch { return false; }
+}
+
+// interactive sudo disabled per request; we only display privilege status now
