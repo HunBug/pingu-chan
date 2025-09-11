@@ -22,7 +22,14 @@ public sealed class ConsecutiveFailRulesService(int threshold = 3, string ruleId
         if (streak >= _threshold)
         {
             var msg = $"{target}: {streak} consecutive failures";
-            var ctx = new Dictionary<string, object> { ["target"] = target!, ["streak"] = streak };
+            var meta = SampleMetaCodec.TryParse(recent[^1].Extra);
+            var ctx = new Dictionary<string, object>
+            {
+                ["target"] = target!,
+                ["streak"] = streak,
+                ["pool"] = meta?.Pool ?? "",
+                ["key"] = meta?.Key ?? target!
+            };
             return new RuleFinding(now, _ruleId, _severity, msg, ctx);
         }
         return null;

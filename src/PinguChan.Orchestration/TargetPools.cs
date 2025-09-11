@@ -4,6 +4,7 @@ namespace PinguChan.Orchestration;
 
 public sealed class TargetPools : ITargetPools
 {
+
     private sealed class Entry
     {
         public required string Key { get; init; }
@@ -11,6 +12,8 @@ public sealed class TargetPools : ITargetPools
         public required TimeSpan MinInterval { get; init; }
         public DateTimeOffset NextDue { get; set; }
         public int FailureCount { get; set; }
+    public bool InFlight { get; set; }
+        public DateTimeOffset LastUpdated { get; set; }
     }
 
     private readonly ConcurrentDictionary<string, List<Entry>> _pools = new();
@@ -18,12 +21,14 @@ public sealed class TargetPools : ITargetPools
     private readonly double _jitterPct;
     private readonly double _backoffBase;
     private readonly int _backoffMaxMultiplier;
+    private readonly TimeSpan _decayHalfLife;
 
-    public TargetPools(double jitterPct = 0.2, double backoffBase = 2.0, int backoffMaxMultiplier = 8)
+    public TargetPools(double jitterPct = 0.2, double backoffBase = 2.0, int backoffMaxMultiplier = 8, TimeSpan? decayHalfLife = null)
     {
         _jitterPct = Math.Clamp(jitterPct, 0, 1);
         _backoffBase = Math.Max(1.0, backoffBase);
         _backoffMaxMultiplier = Math.Max(1, backoffMaxMultiplier);
+        _decayHalfLife = decayHalfLife is { } d && d > TimeSpan.Zero ? d : TimeSpan.FromMinutes(5);
     }
 
     public TargetPools Add(string kind, string targetKey, int weight, TimeSpan minInterval, DateTimeOffset? now = null)
@@ -35,7 +40,8 @@ public sealed class TargetPools : ITargetPools
             Weight = Math.Max(1, weight),
             MinInterval = minInterval <= TimeSpan.Zero ? TimeSpan.FromSeconds(1) : minInterval,
             NextDue = now ?? DateTimeOffset.UtcNow,
-            FailureCount = 0
+            FailureCount = 0,
+            LastUpdated = now ?? DateTimeOffset.UtcNow
         });
         return this;
     }
@@ -45,8 +51,27 @@ public sealed class TargetPools : ITargetPools
         if (!_pools.TryGetValue(kind, out var list) || list.Count == 0)
             return null;
 
+        // apply decay to failure counts based on idle time
+        foreach (var e in list)
+        {
+            if (e.FailureCount > 0)
+            {
+                var elapsed = now - e.LastUpdated;
+                if (elapsed > TimeSpan.Zero)
+                {
+                    var halves = elapsed.TotalSeconds / _decayHalfLife.TotalSeconds;
+                    if (halves > 0)
+                    {
+                        var decayed = (int)Math.Floor(e.FailureCount * Math.Pow(0.5, halves));
+                        if (decayed < e.FailureCount)
+                            e.FailureCount = decayed;
+                    }
+                }
+            }
+        }
+
         // eligible entries due now or earlier
-        var eligible = list.Where(e => e.NextDue <= now).ToList();
+        var eligible = list.Where(e => e.NextDue <= now && !e.InFlight).ToList();
         if (eligible.Count == 0)
         {
             // nothing due; return earliest next due as delay hint
@@ -74,7 +99,9 @@ public sealed class TargetPools : ITargetPools
         var backoffMult = Math.Min(_backoffMaxMultiplier, Math.Pow(_backoffBase, Math.Clamp(chosen.FailureCount, 0, 16)));
         var nextDelay = TimeSpan.FromMilliseconds(baseDelay.TotalMilliseconds * backoffMult + jitterOffsetMs);
         if (nextDelay < TimeSpan.FromMilliseconds(100)) nextDelay = TimeSpan.FromMilliseconds(100);
-        chosen.NextDue = now + nextDelay;
+    chosen.NextDue = now + nextDelay;
+    chosen.InFlight = true; // guard parallelism per target
+        chosen.LastUpdated = now;
 
         return (chosen.Key, baseDelay);
     }
@@ -84,6 +111,14 @@ public sealed class TargetPools : ITargetPools
         if (!_pools.TryGetValue(kind, out var list)) return;
         var e = list.FirstOrDefault(x => x.Key == targetKey);
         if (e is null) return;
-        if (ok) e.FailureCount = 0; else e.FailureCount = Math.Min(e.FailureCount + 1, 32);
+    if (ok) e.FailureCount = 0; else e.FailureCount = Math.Min(e.FailureCount + 1, 32);
+    e.InFlight = false;
+        e.LastUpdated = DateTimeOffset.UtcNow;
+    }
+
+    public IReadOnlyList<TargetPoolDiagnostic> GetDiagnostics(string kind)
+    {
+        if (!_pools.TryGetValue(kind, out var list) || list.Count == 0) return Array.Empty<TargetPoolDiagnostic>();
+        return list.Select(e => new TargetPoolDiagnostic(e.Key, e.NextDue, e.FailureCount, e.InFlight, e.MinInterval)).ToList();
     }
 }

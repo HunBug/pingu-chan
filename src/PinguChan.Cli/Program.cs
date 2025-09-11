@@ -115,7 +115,6 @@ var findingsTask = Task.Run(async () =>
 });
 var renderer = Task.Run(async () =>
 {
-	var lastAlert = new Dictionary<string, DateTimeOffset>();
 	while (!cts.IsCancellationRequested)
 	{
 		var (l1, l2) = stats.BuildSummary();
@@ -133,43 +132,6 @@ var renderer = Task.Run(async () =>
 	// Draw both bottom status lines: l1 metrics and l2 hint/remaining
 	tui.SetStatus(l1, l2);
 
-		// Emit problem markers into logs when rolling stats show issues
-		async void MaybeAlert(string key, string message, string ruleId)
-		{
-			var now = DateTimeOffset.UtcNow;
-			if (lastAlert.TryGetValue(key, out var prev) && (now - prev) < TimeSpan.FromSeconds(10)) return;
-			lastAlert[key] = now;
-			tui.LogWarn(message);
-			// Also persist to sinks as a RuleFinding so files capture the event
-			var finding = new RuleFinding(now, ruleId, Severity.Warning, message);
-			foreach (var s in sinks)
-			{
-				try { await s.WriteAsync(finding, CancellationToken.None); } catch { }
-			}
-		}
-
-		// Ping loss warnings
-		foreach (var p in stats.GetPingWindowStats())
-		{
-			if (p.count >= 5 && p.lossPct >= 5.0)
-			{
-				MaybeAlert($"ping:{p.target}", $"PING {p.target} window loss {p.lossPct:F1}% ({p.count}){(p.avgMs.HasValue ? $" avg={p.avgMs:F0}ms" : string.Empty)}", $"loss_1m:{p.target}");
-			}
-		}
-		// DNS failure warnings
-		var dns = stats.GetDnsWindowStats();
-		if (dns.total >= 5 && dns.failPct >= 10.0)
-		{
-			MaybeAlert("dns", $"DNS window fail {dns.failPct:F1}% ({dns.total}){(dns.p95.HasValue ? $" p95={dns.p95:F0}ms" : string.Empty)}", "dns_fail_1m");
-		}
-		// HTTP failure warnings
-		var http = stats.GetHttpWindowStats();
-		if (http.ok + http.fail >= 5 && http.fail > 0)
-		{
-			var failPct = 100.0 * http.fail / Math.Max(1, http.ok + http.fail);
-			if (failPct >= 10.0)
-				MaybeAlert("http", $"HTTP window fail {failPct:F1}% (ok={http.ok} fail={http.fail}){(http.p95.HasValue ? $" p95={http.p95:F0}ms" : string.Empty)}", "http_fail_1m");
-		}
 		try { await Task.Delay(1000, cts.Token); } catch { }
 	}
 });

@@ -33,7 +33,7 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 - [ ] Implement ConsecutiveFail rule (per-target streak)
 - [ ] Implement Quorum rule (windowed multi-category gating)
 - [ ] Emit RuleFindings with context (streak/quorum flags)
-- [ ] CLI: remove renderer-side thresholds; print findings only
+- [x] CLI: remove renderer-side thresholds; print findings only
 - [ ] Tests: rule triggers, gating behavior, suppression when below thresholds
 
 ### M5 — Trigger engine

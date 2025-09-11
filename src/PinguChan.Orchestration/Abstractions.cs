@@ -9,7 +9,16 @@ public interface ITargetPools
     // Returns (targetKey, baseDelay) or null if nothing eligible right now
     (string targetKey, TimeSpan delay)? TryGetNext(string kind, DateTimeOffset now);
     void Report(string kind, string targetKey, bool ok);
+    IReadOnlyList<TargetPoolDiagnostic> GetDiagnostics(string kind);
 }
+
+public sealed record TargetPoolDiagnostic(
+    string Key,
+    DateTimeOffset NextDue,
+    int FailureCount,
+    bool InFlight,
+    TimeSpan MinInterval
+);
 
 public interface IStatsService
 {
@@ -67,6 +76,9 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public IAsyncEnumerable<RuleFinding> Findings(CancellationToken ct = default)
+        => FindingsBus.ReadAllAsync(ct);
+
     private async Task SchedulerLoop()
     {
         var now = DateTimeOffset.UtcNow;
@@ -102,8 +114,12 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
                 sample = new NetSample(now, SampleKind.Ping, key, false, null, null);
             }
 
-            _stats.Observe(sample);
-            await SamplesBus.PublishAsync(sample, _cts.Token);
+                // Tag pool/key into Extra for downstream consumers using typed codec
+                var meta = SampleMetaCodec.TryParse(sample.Extra) ?? new PinguChan.Core.Models.SampleMeta();
+                meta = meta with { Pool = "ping", Key = key };
+                var tagged = sample with { Extra = SampleMetaCodec.Serialize(meta) };
+            _stats.Observe(tagged);
+            await SamplesBus.PublishAsync(tagged, _cts.Token);
             _pools.Report("ping", key, sample.Ok);
 
             if (_rules is not null)
