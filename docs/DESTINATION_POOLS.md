@@ -1,5 +1,7 @@
 # Destination Pools (Curated Test Targets)
 
+Status: Active. This catalog remains a living reference and is linked from `README.md` and `IMPLEMENTATION.md`.
+
 This catalog provides example targets to use for rotation. Use them responsibly: keep low rates, add jitter, and prefer your own or local infrastructure.
 
 ## Principles
@@ -38,6 +40,10 @@ This catalog provides example targets to use for rotation. Use them responsibly:
 - `https://aka.ms/` (Microsoft shortener)
 
 Note: Prefer HEAD or fetch minimal resources where possible.
+
+### 6) IPv6 (optional)
+- v6 anycast resolvers for ping: `2606:4700:4700::1111` (Cloudflare), `2001:4860:4860::8888` (Google)
+- v6 DNS resolvers (for AAAA queries): same as above
 
 ## Rotation Strategy
 - Build pools per probe kind with weights and per-target min interval.

@@ -2,6 +2,8 @@
 
 Pingu-chan 🐧💢 is a cross-platform network diagnostics & monitoring toolkit (C#/.NET). It focuses on detecting and diagnosing issues (ping/DNS/HTTP), exporting simple data (CSV/JSONL), and providing actionable summaries. No packet payload capture; only metadata and timings.
 
+What’s new in direction: we’ll keep the Core small and add a separate orchestration library (runtime) to own scheduling, destination pools/rotation, triggers, rolling stats, and rules. All frontends (CLI/GUI/Remote) will share that runtime so behavior is consistent.
+
 ## Quick start
 
 Build and run the CLI from source:
@@ -89,7 +91,7 @@ These are printed to console/logs and exported to sinks with a compact JSON payl
 - Platforms: Windows, Linux, macOS (.NET 9). No listeners by default.
 - Sensitive values (tokens/URLs) are not logged beyond hostnames and basic timings.
 - `--sudo` is optional; without it, privileged diagnostics simply report FAIL but normal monitoring continues.
-- See `DESIGN.md` and `docs/IMPLEMENTATION_PLAN.md` for architecture and roadmap.
+- See `DESIGN.md` for architecture and `IMPLEMENTATION.md` for the concise implementation plan and guidelines.
 
 ## Responsible use & network etiquette
 
@@ -105,3 +107,20 @@ Pingu-chan is polite. Please be too.
 - Redact and log responsibly: avoid secrets in hostnames/URLs; Pingu-chan logs only metadata and timings.
 
 See `docs/DESTINATION_POOLS.md` for curated test destinations and rotation guidance.
+
+## Implementation plan (concise)
+
+We consolidated planning into a single short document. Read `IMPLEMENTATION.md` for:
+- What’s already implemented at a glance
+- Basic coding and product guidelines
+- High-level steps to implement the new orchestration runtime, destination pools/rotation, triggers, and rules
+
+This replaces scattered planning docs while keeping them available for historical context.
+
+## Documentation index
+
+- DESIGN.md — Architecture reference. Describes the Core vs Orchestration split, key components, interfaces, and data flow. Benefit: shared mental model and stable contracts for contributors across CLI/GUI/Remote.
+- IMPLEMENTATION.md — Concise plan and guidelines. Summarizes what’s done, coding/product guidelines, and the phased plan for orchestration, pools/rotation, triggers, and rules. Benefit: aligns sequencing and acceptance criteria; speeds up reviews and onboarding.
+- docs/DESTINATION_POOLS.md — Curated test destinations and rotation etiquette. Benefit: responsible usage, reproducible monitoring, and reduced load on third‑party services.
+
+Archived planning docs live under docs/archive/ for historical context.

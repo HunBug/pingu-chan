@@ -1,6 +1,4 @@
-# Pingu-chan MVP Implementation Plan (Core + Minimal CLI)
-
-Focus: deliver a usable, cross-platform monitoring/diagnostics tool quickly. Build the Core first, then a minimal CLI that runs diagnostics and monitoring.
+Moved to archive. See `docs/archive/IMPLEMENTATION_PLAN.md`.
 
 ## MVP status snapshot
 - Core runtime: Done (bounded Channel bus, per-probe loops, graceful stop, drain on shutdown)

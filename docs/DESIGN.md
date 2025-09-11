@@ -4,7 +4,7 @@ It’s intentionally “Copilot-friendly”: concrete names, clear interfaces, a
 
 # DESIGN.md — Pingu-chan 🐧💢
 
-*A tsundere penguin network diagnostics & monitoring toolkit (C# / .NET)*
+Short reference for architecture and components. Detailed steps and project guidelines are in `IMPLEMENTATION.md`.
 
 > “I-It’s not like I care about your packet loss or anything…” — Pingu-chan
 
@@ -32,14 +32,20 @@ It’s intentionally “Copilot-friendly”: concrete names, clear interfaces, a
 ```
 +--------------------------------------------+
 | PinguChan.Core (class lib)                 |
-|  - Schedulers (HostedService-style)        |
-|  - Probes (Ping, DNS, HTTP, UPnP, etc.)    |
-|  - Collectors (link stats, driver logs)    |
-|  - Checks/Rules Engine                     |
-|  - Result & Event Bus                      |
-|  - Storage & Export (CSV/JSONL/SQLite)     |
-|  - Notifications (OS + webhooks)           |
-|  - Config (YAML/JSON)                      |
+|  - Probes & Collectors                     |
+|  - Models & Config                         |
+|  - Event Bus & Sinks                       |
++------------------------+-------------------+
+                         |
+              depends on |
+                         v
++--------------------------------------------+
+| PinguChan.Orchestration (class lib)        |
+|  - Scheduler & Target Pools/Rotation       |
+|  - Rolling Stats Service                   |
+|  - Trigger Engine (actions)                |
+|  - Rules Engine (findings stream)          |
+|  - Unified Config Parsing/Validation       |
 +------------------------+-------------------+
                          |
             +------------+------------+
@@ -47,15 +53,14 @@ It’s intentionally “Copilot-friendly”: concrete names, clear interfaces, a
 +-----------v----------+   +----------v-----------+
 | PinguChan.Cli        |   | PinguChan.Gui        |
 | (System.CommandLine) |   | (Avalonia UI)        |
-| - run/daemon         |   | - Live graphs        |
-| - one-shot diagnose  |   | - “tsundere” states  |
-| - export/report      |   | - rule mgmt          |
+| - console UI         |   | - visual UI          |
+| - process lifetime   |   | - subscriptions      |
 +-----------+----------+   +----------+-----------+
             |                         |
 +-----------v-----------+   +---------v-----------+
 | PinguChan.Remote      |   | Integrations        |
-| - gRPC service        |   | - Webhook/Slack     |
-| - WebSocket streaming |   | - GitHub issue bot  |
+| - HTTP/WebSocket      |   | - Webhook/Slack     |
+| - streaming endpoints |   | - Native notifs     |
 +-----------------------+   +---------------------+
 ```
 
@@ -176,6 +181,7 @@ public interface INotifier
 ---
 
 ## Configuration
+Single schema owned by the orchestration layer (backward compatible with existing fields). See `IMPLEMENTATION.md` for migration steps and validation rules.
 
 `pingu.yaml` (default search in working dir, else env var)
 
@@ -305,7 +311,7 @@ Core uses a minimal LoggerHelper to forward logs to a simple logger implemented 
 
 ---
 
-## Destination pools, rotation, and etiquette (proposed)
+## Destination pools, rotation, and etiquette (short)
 
 To be a good network citizen and improve the quality of measurements, probes should select from destination pools using rotation, jitter, and backoff with per-target limits.
 
@@ -385,49 +391,50 @@ See `docs/DESTINATION_POOLS.md` for curated examples and guidance.
 
 ---
 
-## Implementation Plan (Milestones)
+## Noise reduction & localization (short)
 
-### M0 — Repo scaffolding
+To reduce false alarms and better pinpoint fault domains:
 
-* Solution with 3 projects:
+- Consecutive fail gating: only warn when a target fails in a short consecutive streak.
+- Quorum gating: warn when multiple categories fail within a brief window (e.g., public ping + HTTP).
+- Next-hop health: periodically monitor the first upstream hop beyond the gateway to distinguish LAN/router vs. last-mile/ISP vs. remote.
+- Annotate rolling summaries with streak/quorum flags when relevant.
 
-  * `PinguChan.Core`
-  * `PinguChan.Cli`
-  * `PinguChan.Tests`
-* Add `DESIGN.md`, `README.md`, MIT `LICENSE`.
-* GitHub Actions: build + test on win/linux.
+## Wi‑Fi context decoration (short)
 
-### M1 — Minimum viable monitor
+Attach Wi‑Fi link context (SSID/BSSID/band/channel/RSSI/txRate) to relevant samples when on WLAN so correlations like roam/weak-signal can be derived later.
 
-* Core models & event bus.
-* **PingProbe**, **DnsProbe**, **GatewayProbe**.
-* CSV/JSONL sinks.
-* Rolling console stats (1m/1h/1d).
-* YAML config loader.
-* Basic rules (loss%/fail% thresholds) + console notifier.
+## Conditional MTU sweep (short)
 
-### M2 — Diagnostics & collectors
+Run MTU sweep when HTTP fails but ICMP is OK to test for PMTUD issues, and record the outcome as a finding.
 
-* **NetIfCollector** (cross-platform).
-* **WifiCollector** (with OS fallbacks).
-* **HttpProbe** (generate\_204).
-* Markdown **report** generator (“diagnose” command).
+## IPv6 split checks (short)
 
-### M3 — Stability & insights
+Add IPv6 ping and AAAA DNS checks, and report v4 vs v6 health separately in summaries and logs.
 
-* Burst loss detector (runs test with DF MTU sweep).
-* Correlation rules: loss + roam + RSSI dip → likely Wi-Fi layer.
-* Export to SQLite + simple `pingu stats` from DB.
+## Burst snapshots (short)
 
-### M4 — Remote / GUI foundations
+On burst events, capture compact ARP/DHCP snapshots to aid post-mortem analysis.
 
-* WebSocket/gRPC live stream of samples/findings.
-* Avalonia GUI skeleton with live charts & Pingu-chan avatar.
+## Environment metrics (short)
 
-### M5 — Notifications & integrations
+Emit periodic lightweight environment samples (cpu/mem/battery/power) and a one-time startup snapshot (system/network baseline) into the same event stream.
 
-* Slack/Webhook notifier + example payloads.
-* Optional Windows/macOS/Linux native notifications.
+## Unified JSONL mode (optional)
+
+Offer a single JSONL stream mode that consolidates samples, findings, snapshots, and startup events under a consistent top-level envelope, with event-specific extras.
+
+---
+
+## Trigger-based measurements (short)
+High-level trigger engine plan and examples are in `IMPLEMENTATION.md`.
+
+## Separate orchestration library
+We will implement orchestration as a separate library to enforce clean separation. It owns scheduling, pools/rotation, triggers, stats, and rules, and exposes streams (samples/findings) and a small host API. See `IMPLEMENTATION.md` for the migration plan.
+
+## Implementation Plan
+
+Moved to `IMPLEMENTATION.md`.
 
 ---
 

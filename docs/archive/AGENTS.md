@@ -1,4 +1,4 @@
-# Agent Guidance for Pingu-chan
+# Agent Guidance for Pingu-chan (Archived)
 
 - Trust `.github/copilot-instructions.md` and path-specific instructions under `.github/instructions/`.
 - Prefer minimal exploration; only search when instructions are incomplete or clearly wrong.
