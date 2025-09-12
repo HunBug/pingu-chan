@@ -38,15 +38,15 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 
 ### M5 — Trigger engine
 - [x] Implement ITriggerEngine (conditions over samples) with debounce + cooldown, per-action concurrency guard
-- [ ] Actions: mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link (stubs + platform guards)
+- [x] Actions: mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link (stubs + platform guards)
 - [x] Emit finding on trigger fire; action results are normal samples
 - [x] Wire trigger engine into orchestrator tick and CLI; add orchestrator logs for armed/firing with cause details
-- [ ] Tests: action concurrency guard; simple scenario flows (debounce/cooldown covered)
+- [x] Tests: action concurrency guard; simple scenario flows (debounce/cooldown covered)
 
 ### M6 — Config unification & validation
 - [x] Extend config with pools/scheduler/rules; add sinks.consoleLogLevel and sinks.fileLogLevel (defaults: info)
 - [x] Validator: floors, dedupe/normalize targets
-- [ ] Validator: deny/allow lists support
+- [x] Validator: deny/allow lists support
 - [x] Tests: parsing variants, defaulting, validation errors
 
 ### M7 — Smoke & stabilization
@@ -63,9 +63,9 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
     - Rolling stats window mixing targets or wrong keying
     - Probe result mapping not tagging target correctly (e.g., shared label)
   - Plan:
-    - [ ] Add unit tests: per-target loss tracking; simulate failures on multiple targets and assert both surfaces
-    - [ ] After orchestrator scheduler and stats move, re-check using pools with ≥2 ping targets
-    - [ ] Add a sanity logger: on each ping sample, log target key + ok/fail and ensure both targets appear during test run
+    - [x] Add unit tests: per-target loss tracking; simulate failures on multiple targets and assert both surfaces
+    - [x] After orchestrator scheduler and stats move, re-check using pools with ≥2 ping targets
+    - [x] Add a sanity logger: on each ping sample, log target key + ok/fail and ensure both targets appear during test run
 
 ## Test plan (initial)
 
@@ -74,32 +74,24 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
   - [x] StatsService: per-kind/target windows, fail% calculation (p50/p95 pending)
   - [x] Rules: ConsecutiveFail/Quorum
   - [x] Triggers: debounce/cooldown firing
-  - [ ] Sinks: write/read of NetSample and RuleFinding
+  - [x] Sinks: write/read of NetSample and RuleFinding
 - [ ] Smoke tests
   - [ ] CLI run with 2+ ping targets in pools; verify both generate samples and loss is tracked per target
   - [ ] Simulate transient failures (mock PingProbe) and assert findings emitted only with gating
 
-## Next few days (final push)
+## Next few days (remaining, prioritized)
 
-Day 1 — Trigger actions & wiring
-- [ ] Implement actions (stubs + guards): mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link (platform-guarded)
-- [ ] Emit action outputs as NetSample; ensure errors surface as Warning findings
-- [ ] Tests: action success/failure, concurrency guard (no overlap)
+1) Docs polish and completeness
+- [x] CONFIG.md: brief section on triggers/actions (current built-ins and logs)
+- [x] README: short note on triggers behavior and log visibility
+- [ ] Finalize design/implementation notes; plan to retire or archive DEV_TASKS.md
 
-Day 2 — Config, validator, UX
-- [ ] Validator: add deny/allow lists support + docs
-- [ ] CLI: optional verbosity flag to override sinks.consoleLogLevel
-- [ ] Docs: CONFIG.md update for triggers/actions and verbosity flag
+2) CI
+- [ ] GitHub Actions: Windows/Linux matrix build + dotnet test
 
-Day 3 — Verification & smoke
-- [ ] Known issue: per-target loss with ≥2 ping targets (unit test + quick run)
-- [ ] Smoke: run orchestrated session; verify pool rotation/backoff, trigger fires, findings emitted, CSV/JSONL written
-- [ ] Sinks: schema check for NetSample and RuleFinding (CSV/JSONL)
-
-Day 4 — Polish & wrap-up
-- [ ] Docs: finalize design/implementation notes; short README note on triggers/logging levels
-- [ ] CI: ensure tests pass on Windows/Linux matrix
-- [ ] Cleanup: plan to retire or archive DEV_TASKS.md after stabilization
+3) Nice-to-haves
+- [ ] Enrich action payloads (include OS hints, iface names, gateway) while keeping Core minimal
+- [ ] Expand filters to support simple globs (e.g., "*.google.com") if needed (optional)
 
 ## Notes
 - Destination pools must rotate; on error streaks, re-check current target (backoff-aware) and also probe others to localize scope.

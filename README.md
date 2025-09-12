@@ -98,6 +98,11 @@ These are printed to console/logs and exported to sinks with a compact JSON payl
 - `--sudo` is optional; without it, privileged diagnostics simply report FAIL but normal monitoring continues.
 - See `DESIGN.md` for architecture and `IMPLEMENTATION.md` for the concise implementation plan and guidelines.
 
+### Triggers at a glance
+- The orchestrator observes recent health (e.g., ping failures) and may run small built-in actions with debounce/cooldown.
+- Logs include clear lifecycle markers: "trigger armed", "trigger firing", "action start/done/failed".
+- Action outputs are normal samples (CSV/JSONL). Errors become Warning findings.
+
 ## Responsible use & network etiquette
 
 Pingu-chan is polite. Please be too.

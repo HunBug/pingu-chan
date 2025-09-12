@@ -30,6 +30,23 @@ Optional allow/deny lists applied to normalized targets. Matching is simple subs
 
 Applied to `targets.ping`, `targets.dns`, and `targets.http` after deduplication/normalization. Useful for quick scoping during tests.
 
+## triggers (built-ins)
+Triggers are lightweight reactions the orchestrator runs when recent health degrades (e.g., ping failures). They are debounced and have per-action cooldowns; overlap is prevented by a per-action concurrency guard. When a trigger fires, you’ll see orchestrator-prefixed logs like:
+
+- "[orchestrator] trigger armed …"
+- "[orchestrator] trigger firing …"
+- "[orchestrator] trigger action start/done/failed …"
+
+Current built-in actions (platform-guarded stubs that emit normal NetSample records):
+- mtu_sweep: quick path MTU sweep via DF pings
+- snapshot_arp_dhcp: snapshot ARP cache and DHCP lease info
+- next_hop_refresh: refresh default gateway / route insights
+- wifi_link: basic Wi‑Fi link state snapshot (where available)
+
+Notes:
+- These actions are intentionally minimal and safe by default.
+- Output samples appear in CSV/JSONL like any other sample; failures surface as Warning findings.
+
 ## orchestration.scheduler
 Controls destination pools and scheduling etiquette.
 
