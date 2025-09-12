@@ -43,19 +43,21 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
     private readonly ITargetPools _pools;
     private readonly IStatsService _stats;
     private readonly IRulesService? _rules;
-    private readonly Func<string, IProbe> _pingProbeFactory;
+    private readonly IReadOnlyDictionary<string, Func<string, IProbe>> _probeFactories;
+    private readonly List<string> _kinds;
     private Task? _loop;
 
     public MonitorOrchestrator(
         ITargetPools pools,
         IStatsService stats,
-        Func<string, IProbe> pingProbeFactory,
+        IReadOnlyDictionary<string, Func<string, IProbe>> probeFactories,
         IRulesService? rules = null)
     {
         _pools = pools;
         _stats = stats;
         _rules = rules;
-        _pingProbeFactory = pingProbeFactory;
+        _probeFactories = new Dictionary<string, Func<string, IProbe>>(probeFactories, StringComparer.OrdinalIgnoreCase);
+        _kinds = _probeFactories.Keys.OrderBy(k => k).ToList();
     }
 
     public ValueTask DisposeAsync()
@@ -83,27 +85,48 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
     {
         var now = DateTimeOffset.UtcNow;
         var probes = new Dictionary<string, IProbe>();
+        var rrIndex = 0;
         while (!_cts.IsCancellationRequested)
         {
             now = DateTimeOffset.UtcNow;
-            var next = _pools.TryGetNext("ping", now);
-            if (next is null)
+            (string kind, string key, TimeSpan delay)? pick = null;
+            TimeSpan minDelay = TimeSpan.MaxValue;
+
+            for (int i = 0; i < _kinds.Count; i++)
             {
-                try { await Task.Delay(200, _cts.Token); } catch { }
-                continue;
+                var kindIdx = (rrIndex + i) % _kinds.Count;
+                var kind = _kinds[kindIdx];
+                var next = _pools.TryGetNext(kind, now);
+                if (next is null) continue;
+                var (key, delay) = next.Value;
+                if (delay == TimeSpan.Zero)
+                {
+                    pick = (kind, key, delay);
+                    rrIndex = (kindIdx + 1) % _kinds.Count; // advance RR for fairness
+                    break;
+                }
+                else if (delay < minDelay)
+                {
+                    minDelay = delay;
+                }
             }
-            var (key, delay) = next.Value;
-            if (delay > TimeSpan.Zero)
+
+            if (pick is null)
             {
-                try { await Task.Delay(delay, _cts.Token); } catch { }
+                var wait = minDelay == TimeSpan.MaxValue ? TimeSpan.FromMilliseconds(100) : minDelay;
+                try { await Task.Delay(wait, _cts.Token); } catch { }
                 continue;
             }
 
-            if (!probes.TryGetValue(key, out var probe))
+            var (selKind, key2, _) = pick.Value;
+            var probeKey = $"{selKind}:{key2}";
+            if (!probes.TryGetValue(probeKey, out var probe))
             {
-                probe = _pingProbeFactory(key);
-                probes[key] = probe;
+                var factory = _probeFactories[selKind];
+                probe = factory(key2);
+                probes[probeKey] = probe;
             }
+
             NetSample sample;
             try
             {
@@ -111,16 +134,24 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
             }
             catch
             {
-                sample = new NetSample(now, SampleKind.Ping, key, false, null, null);
+                // Build a sample with kind inferred from selection
+                var kindEnum = selKind.ToLowerInvariant() switch
+                {
+                    "ping" => SampleKind.Ping,
+                    "dns" => SampleKind.Dns,
+                    "http" => SampleKind.Http,
+                    _ => SampleKind.Ping
+                };
+                sample = new NetSample(now, kindEnum, key2, false, null, null);
             }
 
-                // Tag pool/key into Extra for downstream consumers using typed codec
-                var meta = SampleMetaCodec.TryParse(sample.Extra) ?? new PinguChan.Core.Models.SampleMeta();
-                meta = meta with { Pool = "ping", Key = key };
-                var tagged = sample with { Extra = SampleMetaCodec.Serialize(meta) };
+            // Tag pool/key into Extra for downstream consumers using typed codec
+            var meta = SampleMetaCodec.TryParse(sample.Extra) ?? new PinguChan.Core.Models.SampleMeta();
+            meta = meta with { Pool = selKind, Key = key2 };
+            var tagged = sample with { Extra = SampleMetaCodec.Serialize(meta) };
             _stats.Observe(tagged);
             await SamplesBus.PublishAsync(tagged, _cts.Token);
-            _pools.Report("ping", key, sample.Ok);
+            _pools.Report(selKind, key2, sample.Ok);
 
             if (_rules is not null)
             {

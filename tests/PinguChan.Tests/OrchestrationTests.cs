@@ -14,8 +14,9 @@ public class OrchestrationTests
         // First eligible should be one of a/b, but we don't assert randomness; we assert eligibility and delay
         var pick1 = pools.TryGetNext("ping", now);
         Assert.NotNull(pick1);
-        var (k1, delay1) = pick1!.Value;
-        Assert.True(delay1 >= TimeSpan.FromSeconds(1) - TimeSpan.FromMilliseconds(1));
+    var (k1, delay1) = pick1!.Value;
+    // With new semantics, when a key is assigned, delay is zero (execute now)
+    Assert.Equal(TimeSpan.Zero, delay1);
 
         // Report failure for chosen, increases backoff
         pools.Report("ping", k1, ok: false);

@@ -8,6 +8,7 @@ using PinguChan.Core.Models;
 using PinguChan.Cli.Tui;
 using PinguChan.Core.Collectors;
 using PinguChan.Cli.Sudo;
+using PinguChan.Orchestration;
 
 // Minimal wiring without Host (no external packages required)
 // TODO: integrate Microsoft.Extensions.* when NuGet is available.
@@ -16,7 +17,7 @@ using PinguChan.Cli.Sudo;
 PrintWelcome();
 await PrintPrivilegeSummaryAsync();
 
-// Load config (YAML or JSON). Defaults applied if file missing.
+// Load config (YAML or JSON). Defaults applied if file missing. CLI args are secondary.
 var configPath = args.SkipWhile(a => a != "--config").Skip(1).FirstOrDefault();
 var cfg = ConfigLoader.LoadFromFile(configPath);
 
@@ -24,15 +25,16 @@ TimeSpan pingInt = DurationParser.Parse(cfg.Intervals.Ping, TimeSpan.FromSeconds
 TimeSpan dnsInt = DurationParser.Parse(cfg.Intervals.Dns, TimeSpan.FromSeconds(5));
 TimeSpan httpInt = DurationParser.Parse(cfg.Intervals.Http, TimeSpan.FromSeconds(10));
 
-var probes = new List<IProbe>();
-foreach (var t in cfg.Targets.Ping) probes.Add(new PingProbe(t, pingInt));
-foreach (var t in cfg.Targets.Dns) probes.Add(new DnsProbe(t, dnsInt));
-foreach (var t in cfg.Targets.Http) probes.Add(new HttpProbe(t, httpInt));
+// Diagnostic probes (used in diagnose mode only)
+var diagProbes = new List<IProbe>();
+foreach (var t in cfg.Targets.Ping) diagProbes.Add(new PingProbe(t, pingInt));
+foreach (var t in cfg.Targets.Dns) diagProbes.Add(new DnsProbe(t, dnsInt));
+foreach (var t in cfg.Targets.Http) diagProbes.Add(new HttpProbe(t, httpInt));
 // Gateway probe (implicit)
 var gatewayProbe = new GatewayProbe(TimeSpan.FromSeconds(5));
-if (!gatewayProbe.Id.EndsWith(":unknown")) probes.Add(gatewayProbe);
+if (!gatewayProbe.Id.EndsWith(":unknown")) diagProbes.Add(gatewayProbe);
 // MTU probe (best-effort, infrequent)
-probes.Add(new MtuProbe("8.8.8.8", TimeSpan.FromMinutes(30)));
+diagProbes.Add(new MtuProbe("8.8.8.8", TimeSpan.FromMinutes(30)));
 
 // Collectors (diagnostics)
 var collectors = new List<ICollector>
@@ -79,7 +81,7 @@ if (diagnose)
 	PrintEnv();
 	// no interactive sudo; just report privileges
 	await PrintCapabilitiesAsync();
-	await using var diagHost = new MonitorHost(probes, collectors, sinks);
+	await using var diagHost = new MonitorHost(diagProbes, collectors, sinks);
 	await diagHost.RunAsync(duration: null, once: true);
 	return;
 }
@@ -136,7 +138,34 @@ var renderer = Task.Run(async () =>
 	}
 });
 
-await using var host = new MonitorHost(probes, collectors, sinks) { SummaryInterval = TimeSpan.FromSeconds(30) };
+// Continuous monitoring: rely on Orchestration to schedule probes; host writes samples/findings to sinks
+await using var host = new MonitorHost(Array.Empty<IProbe>(), collectors, sinks) { SummaryInterval = TimeSpan.FromSeconds(30) };
+
+// Build orchestration components from config
+var sched = cfg.Orchestration.Scheduler;
+var decay = DurationParser.Parse(sched.DecayHalfLife, TimeSpan.FromMinutes(5));
+var pools = new TargetPools(jitterPct: sched.JitterPct, backoffBase: sched.BackoffBase, backoffMaxMultiplier: sched.BackoffMaxMultiplier, decayHalfLife: decay);
+var now = DateTimeOffset.UtcNow;
+foreach (var target in cfg.Targets.Ping) pools.Add("ping", target, weight: 1, minInterval: pingInt, now: now);
+foreach (var target in cfg.Targets.Dns) pools.Add("dns", target, weight: 1, minInterval: dnsInt, now: now);
+foreach (var target in cfg.Targets.Http) pools.Add("http", target, weight: 1, minInterval: httpInt, now: now);
+IStatsService statsSvc = new StatsService();
+var rf = cfg.Rules;
+var qwin = DurationParser.Parse(rf.Quorum.Window, TimeSpan.FromMinutes(1));
+var quorum = new QuorumRulesService(qwin, rf.Quorum.FailThreshold, rf.Quorum.MinSamples);
+IRulesService rulesSvc = new CompositeRulesService(new IRulesService[]
+{
+	new ConsecutiveFailRulesService(cfg.Rules.ConsecutiveFailThreshold),
+	quorum
+});
+var factories = new Dictionary<string, Func<string, IProbe>>(StringComparer.OrdinalIgnoreCase)
+{
+	["ping"] = key => new PingProbe(key, pingInt),
+	["dns"] = key => new DnsProbe(key, dnsInt),
+	["http"] = key => new HttpProbe(key, httpInt)
+};
+var orchestrator = new MonitorOrchestrator(pools, statsSvc, factories, rulesSvc);
+await orchestrator.StartAsync();
 var stopRequested = false;
 Console.CancelKeyPress += async (_, e) =>
 {
@@ -146,13 +175,15 @@ Console.CancelKeyPress += async (_, e) =>
 	cts.Cancel();
 	findingsCts.Cancel();
 	await host.StopAsync();
+	await orchestrator.StopAsync();
 };
-await host.RunAsync(duration, once);
+await host.RunAsync(duration, once: false);
 cts.Cancel();
 findingsCts.Cancel();
 await renderer;
 findingsCts.Cancel();
 try { await findingsTask; } catch { }
+await orchestrator.StopAsync();
 
 
 static void PrintEnv()

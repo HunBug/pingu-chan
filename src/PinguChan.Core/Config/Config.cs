@@ -10,6 +10,8 @@ public sealed class PinguConfig
     public IntervalsConfig Intervals { get; set; } = new();
     public TargetsConfig Targets { get; set; } = new();
     public SinksConfig Sinks { get; set; } = new();
+    public OrchestrationConfig Orchestration { get; set; } = new();
+    public RulesConfig Rules { get; set; } = new();
 }
 
 public sealed class IntervalsConfig
@@ -34,6 +36,33 @@ public sealed class SinksConfig
     // If true (default), append a timestamp to sink filenames so each run writes a new file.
     // When false, files are appended like today.
     public bool AppendTimestamp { get; set; } = true;
+}
+
+public sealed class OrchestrationConfig
+{
+    public SchedulerConfig Scheduler { get; set; } = new();
+}
+
+public sealed class SchedulerConfig
+{
+    public double JitterPct { get; set; } = 0.2;
+    public double BackoffBase { get; set; } = 2.0;
+    public int BackoffMaxMultiplier { get; set; } = 8;
+    public string DecayHalfLife { get; set; } = "00:05:00"; // TimeSpan format or shorthand accepted by DurationParser
+}
+
+public sealed class RulesConfig
+{
+    // Minimal rules config to start; more to be added later
+    public int ConsecutiveFailThreshold { get; set; } = 3;
+    public QuorumRuleConfig Quorum { get; set; } = new();
+}
+
+public sealed class QuorumRuleConfig
+{
+    public string Window { get; set; } = "00:01:00"; // 60s default
+    public double FailThreshold { get; set; } = 0.5; // 50%
+    public int MinSamples { get; set; } = 5; // minimum events to consider
 }
 
 public static class ConfigLoader

@@ -72,7 +72,7 @@ public sealed class TargetPools : ITargetPools
 
         // eligible entries due now or earlier
         var eligible = list.Where(e => e.NextDue <= now && !e.InFlight).ToList();
-        if (eligible.Count == 0)
+    if (eligible.Count == 0)
         {
             // nothing due; return earliest next due as delay hint
             var next = list.MinBy(e => e.NextDue)!;
@@ -103,7 +103,8 @@ public sealed class TargetPools : ITargetPools
     chosen.InFlight = true; // guard parallelism per target
         chosen.LastUpdated = now;
 
-        return (chosen.Key, baseDelay);
+    // When a key is assigned now, return zero delay (caller should execute immediately)
+    return (chosen.Key, TimeSpan.Zero);
     }
 
     public void Report(string kind, string targetKey, bool ok)

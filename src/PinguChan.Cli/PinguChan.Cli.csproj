@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PinguChan.Core\PinguChan.Core.csproj" />
+  <ProjectReference Include="..\PinguChan.Orchestration\PinguChan.Orchestration.csproj" />
   </ItemGroup>
 
   <ItemGroup>
