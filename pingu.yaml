@@ -8,9 +8,9 @@ intervals:
 
 # Targets chosen to be globally reachable and low-impact
 targets:
-  ping: ["1.1.1.1", "8.8.8.8"]
-  dns: ["github.com"]
-  http: ["https://www.google.com/generate_204"]
+  ping: ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "208.67.222.222", "208.67.220.220"]
+  dns: ["github.com", "example.com", "cloudflare.com", "wikipedia.org", "microsoft.com"]
+  http: ["https://www.google.com/generate_204", "https://www.gstatic.com/generate_204", "https://httpstat.us/204"]
 
 # Output files are created next to the executable; use absolute paths to override
 sinks:
