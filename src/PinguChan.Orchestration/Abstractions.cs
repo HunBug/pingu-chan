@@ -46,6 +46,9 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
     private readonly IReadOnlyDictionary<string, Func<string, IProbe>> _probeFactories;
     private readonly List<string> _kinds;
     private Task? _loop;
+    // Keep a small recent window per (kind,key) for rule evaluation
+    private readonly Dictionary<(string kind, string key), LinkedList<NetSample>> _recent = new();
+    private static readonly TimeSpan MaxRecentWindow = TimeSpan.FromMinutes(10);
 
     public MonitorOrchestrator(
         ITargetPools pools,
@@ -155,9 +158,23 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
 
             if (_rules is not null)
             {
-                // very small local window from stats not available; for now, evaluate on singleton
-                var finding = _rules.Evaluate(new List<NetSample> { sample }, now);
-                if (finding is not null) await FindingsBus.PublishAsync(finding, _cts.Token);
+                // Maintain per-target recent buffer and prune beyond max window
+                var rkey = (selKind, key2);
+                if (!_recent.TryGetValue(rkey, out var list))
+                {
+                    list = new LinkedList<NetSample>();
+                    _recent[rkey] = list;
+                }
+                list.AddLast(tagged);
+                var cutoff = now - MaxRecentWindow;
+                while (list.First is not null && list.First.Value.Timestamp < cutoff)
+                    list.RemoveFirst();
+
+                // Evaluate rules against the recent window
+                var recentArray = list.ToArray();
+                var finding = _rules.Evaluate(recentArray, now);
+                if (finding is not null)
+                    await FindingsBus.PublishAsync(finding, _cts.Token);
             }
         }
     }
