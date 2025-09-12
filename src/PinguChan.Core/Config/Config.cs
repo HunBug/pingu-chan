@@ -12,6 +12,7 @@ public sealed class PinguConfig
     public SinksConfig Sinks { get; set; } = new();
     public OrchestrationConfig Orchestration { get; set; } = new();
     public RulesConfig Rules { get; set; } = new();
+    public HttpConfig Http { get; set; } = new();
 }
 
 public sealed class IntervalsConfig
@@ -49,6 +50,12 @@ public sealed class SchedulerConfig
     public double BackoffBase { get; set; } = 2.0;
     public int BackoffMaxMultiplier { get; set; } = 8;
     public string DecayHalfLife { get; set; } = "00:05:00"; // TimeSpan format or shorthand accepted by DurationParser
+    // Optional global floors per kind (minimum spacing between any two probes of the same kind)
+    public string GlobalFloorPing { get; set; } = "0s";
+    public string GlobalFloorDns { get; set; } = "0s";
+    public string GlobalFloorHttp { get; set; } = "0s";
+    // Periodic diagnostics snapshot interval; 0 disables
+    public string DiagnosticsInterval { get; set; } = "00:01:00";
 }
 
 public sealed class RulesConfig
@@ -56,6 +63,12 @@ public sealed class RulesConfig
     // Minimal rules config to start; more to be added later
     public int ConsecutiveFailThreshold { get; set; } = 3;
     public QuorumRuleConfig Quorum { get; set; } = new();
+}
+
+public sealed class HttpConfig
+{
+    // Optional custom User-Agent for HTTP probes
+    public string? UserAgent { get; set; } = "Pingu-chan/0.1 (netwatch)";
 }
 
 public sealed class QuorumRuleConfig

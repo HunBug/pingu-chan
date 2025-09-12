@@ -27,6 +27,8 @@ Controls destination pools and scheduling etiquette.
 - backoffBase: Exponential backoff base when a target fails consecutively. Default: 2.0
 - backoffMaxMultiplier: Cap for backoff multiplier. Default: 8
 - decayHalfLife: Half-life to gradually decay failure streaks when a target recovers or is idle. Default: 00:05:00
+- globalFloorPing/globalFloorDns/globalFloorHttp: Minimum spacing between any two probes of the same kind across all targets. Default: 0s (disabled)
+- diagnosticsInterval: If set > 0, periodically logs pool diagnostics. Default: 00:01:00
 
 ## rules
 Basic noise-reduction rules that emit findings when health crosses thresholds.
@@ -61,6 +63,10 @@ orchestration:
     backoffBase: 2.0
     backoffMaxMultiplier: 8
     decayHalfLife: 00:05:00
+  globalFloorPing: 0s
+  globalFloorDns: 0s
+  globalFloorHttp: 0s
+  diagnosticsInterval: 00:01:00
 
 rules:
   consecutiveFailThreshold: 3
@@ -68,6 +74,9 @@ rules:
     window: 00:01:00
     failThreshold: 0.5
     minSamples: 5
+
+http:
+  userAgent: "Pingu-chan/0.1 (netwatch)"
 ```
 
 ## Notes

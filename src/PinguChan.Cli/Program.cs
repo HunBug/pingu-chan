@@ -9,6 +9,7 @@ using PinguChan.Cli.Tui;
 using PinguChan.Core.Collectors;
 using PinguChan.Cli.Sudo;
 using PinguChan.Orchestration;
+using System.Timers;
 
 // Minimal wiring without Host (no external packages required)
 // TODO: integrate Microsoft.Extensions.* when NuGet is available.
@@ -20,6 +21,16 @@ await PrintPrivilegeSummaryAsync();
 // Load config (YAML or JSON). Defaults applied if file missing. CLI args are secondary.
 var configPath = args.SkipWhile(a => a != "--config").Skip(1).FirstOrDefault();
 var cfg = ConfigLoader.LoadFromFile(configPath);
+// Validate and normalize config
+var validator = new ConfigValidator();
+var validation = validator.ValidateAndNormalize(cfg);
+foreach (var w in validation.Warnings) Console.WriteLine($"[config] warn: {w}");
+if (!validation.Ok)
+{
+	foreach (var e in validation.Errors) Console.WriteLine($"[config] error: {e}");
+	Environment.ExitCode = 2;
+	return;
+}
 
 TimeSpan pingInt = DurationParser.Parse(cfg.Intervals.Ping, TimeSpan.FromSeconds(2));
 TimeSpan dnsInt = DurationParser.Parse(cfg.Intervals.Dns, TimeSpan.FromSeconds(5));
@@ -151,6 +162,9 @@ foreach (var target in cfg.Targets.Ping) pools.Add("ping", target, weight: 1, mi
 foreach (var target in cfg.Targets.Dns) pools.Add("dns", target, weight: 1, minInterval: dnsInt, now: now);
 foreach (var target in cfg.Targets.Http) pools.Add("http", target, weight: 1, minInterval: httpInt, now: now);
 
+// Set HTTP User-Agent from config
+PinguChan.Core.Probes.HttpProbe.UserAgent = string.IsNullOrWhiteSpace(cfg.Http.UserAgent) ? PinguChan.Core.Probes.HttpProbe.UserAgent : cfg.Http.UserAgent;
+
 if (dumpPools)
 {
 	Console.WriteLine("== TargetPools diagnostics ==");
@@ -182,7 +196,34 @@ var factories = new Dictionary<string, Func<string, IProbe>>(StringComparer.Ordi
 	["http"] = key => new HttpProbe(key, httpInt)
 };
 var orchestrator = new MonitorOrchestrator(pools, statsSvc, factories, rulesSvc);
+// Apply global floors from config
+var floorPing = DurationParser.Parse(sched.GlobalFloorPing, TimeSpan.Zero);
+var floorDns = DurationParser.Parse(sched.GlobalFloorDns, TimeSpan.Zero);
+var floorHttp = DurationParser.Parse(sched.GlobalFloorHttp, TimeSpan.Zero);
+orchestrator.SetGlobalFloors(floorPing, floorDns, floorHttp);
 await orchestrator.StartAsync();
+
+// Periodic pool diagnostics if configured
+var diagInterval = DurationParser.Parse(sched.DiagnosticsInterval, TimeSpan.Zero);
+System.Timers.Timer? diagTimer = null;
+if (diagInterval > TimeSpan.Zero)
+{
+	diagTimer = new System.Timers.Timer(diagInterval.TotalMilliseconds)
+	{
+		AutoReset = true,
+		Enabled = true
+	};
+	diagTimer.Elapsed += (_, __) =>
+	{
+		foreach (var kind in new[] { "ping", "dns", "http" })
+		{
+			var diags = pools.GetDiagnostics(kind);
+			if (diags.Count == 0) continue;
+			foreach (var dgn in diags)
+				tui.LogInfo($"POOL {kind} key={dgn.Key} next={dgn.NextDue:HH:mm:ss} fail={dgn.FailureCount} inFlight={dgn.InFlight}");
+		}
+	};
+}
 var stopRequested = false;
 Console.CancelKeyPress += async (_, e) =>
 {
@@ -191,6 +232,7 @@ Console.CancelKeyPress += async (_, e) =>
 	e.Cancel = true;
 	cts.Cancel();
 	findingsCts.Cancel();
+	if (diagTimer is not null) diagTimer.Stop();
 	await host.StopAsync();
 	await orchestrator.StopAsync();
 };
@@ -201,6 +243,7 @@ await renderer;
 findingsCts.Cancel();
 try { await findingsTask; } catch { }
 await orchestrator.StopAsync();
+if (diagTimer is not null) diagTimer.Dispose();
 
 
 static void PrintEnv()

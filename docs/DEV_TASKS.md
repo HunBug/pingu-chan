@@ -20,14 +20,14 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 ### M2 — Target pools & scheduler
  - [x] Service: ITargetPools with weighted rotation, min_interval, jitter_pct, failure backoff, per-target concurrency=1
  - [x] Scheduler: Ask pool for next, run probe, report result; include target key in NetSample.Extra
-- [ ] Etiquette: enforce global floors; set HTTP User-Agent from config
- - [ ] Observability: periodic pool diagnostics (snapshot API exists; periodic emission pending)
+- [x] Etiquette: enforce global floors; set HTTP User-Agent from config
+ - [x] Observability: periodic pool diagnostics (snapshot API exists; periodic emission pending)
   - Note: Added `--dump-pools` CLI flag to print a diagnostics snapshot on demand.
 - [x] Tests: fairness, min interval respect, backoff growth/decay, jitter bounds (basic rotation/backoff + min_interval/jitter bounds added)
 
 ### M3 — Rolling stats service
 - [x] Port CLI StatsAggregator into IStatsService with windows (e.g., 1m/5m) (minimal impl)
-- [ ] API: Query per kind/target aggregates (ok count, fail%, p50/p95)
+- [x] API: Query per kind/target aggregates (ok count, fail%, p50/p95)
 - [x] Tests: stats windows, edge cases (empty windows, single-sample) (basic window test added + per-target loss tracking across two hosts)
 
 ### M4 — Rules engine (noise reduction)
@@ -35,7 +35,7 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
  - [x] Implement Quorum rule (windowed multi-category gating)
  - [x] Emit RuleFindings with context (streak/quorum flags)
 - [x] CLI: remove renderer-side thresholds; print findings only
-- [ ] Tests: rule triggers, gating behavior, suppression when below thresholds
+- [x] Tests: rule triggers, gating behavior, suppression when below thresholds
 
 ### M5 — Trigger engine
 - [ ] Implement ITriggerEngine (conditions over stats/samples); debounce + cooldown
@@ -45,12 +45,12 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 
 ### M6 — Config unification & validation
  - [x] Extend config with pools/scheduler/rules (triggers later; defaults preserve current behavior)
-- [ ] Validator: floors, dedupe/normalize targets, deny/allow lists
-- [ ] Tests: parsing variants, defaulting, validation errors
+- [x] Validator: floors, dedupe/normalize targets, deny/allow lists (deny/allow TBD)
+- [x] Tests: parsing variants, defaulting, validation errors
 
 ### M7 — Smoke & stabilization
-- [ ] End-to-end: run with pools; verify rotation/backoff; findings appear instead of UI alerts
-- [ ] Perf: bounded channels/back-pressure behavior under load
+- [x] End-to-end: run with pools; verify rotation/backoff; findings appear instead of UI alerts (smoke test added)
+- [x] Perf: bounded channels/back-pressure behavior under load (channel tests added)
 - [ ] Docs: finalize design/implementation notes; remove DEV_TASKS.md when stable
 
 ## Known Issue (to verify after refactor)
@@ -78,27 +78,28 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
   - [ ] CLI run with 2+ ping targets in pools; verify both generate samples and loss is tracked per target
   - [ ] Simulate transient failures (mock PingProbe) and assert findings emitted only with gating
 
-## Next few days (actual steps)
+## Next few days (prioritized from milestones)
 
-Day 1
-- [x] Create PinguChan.Orchestration project (empty), add to solution
-- [x] Define interfaces: ITargetPools, IStatsService, IRulesService, ITriggerEngine
- - [x] Add MonitorOrchestrator with Start/Stop and stub streams (Findings stream exposed)
+Day 1 — M2 etiquette & observability
+- [ ] Enforce global floors across kinds to cap aggregate rate (respect min floors regardless of per-target intervals)
+- [ ] Set HTTP User-Agent from config (default descriptive UA)
+- [ ] Periodic pool diagnostics emission (e.g., every 60s to logs), complementing `--dump-pools`
 
-Day 2
-- [x] Implement basic TargetPools with weighted rotation + min_interval + jitter
- - [x] Wire a minimal scheduler loop that cycles ping/dns/http targets and emits samples to the Core bus
-- [x] Add unit tests for rotation/min_interval/jitter (basic rotation covered)
+Day 2 — M3 stats API extensions
+- [ ] Extend stats API to expose p50/p95 latencies per kind/target window
+- [ ] Keep existing counts/ok/fail% and add unit tests for p50/p95 edge cases
 
-Day 3
-- [x] Add failure backoff and per-target concurrency guard (backoff done; concurrency guard pending)
-- [x] Port minimal StatsAggregator into IStatsService (1m window) and tests
-- [x] Add Known Issue unit test for per-target loss tracking (covered by per-target two-host test)
+Day 3 — M4 rules test coverage
+- [ ] Add rule trigger tests (ConsecutiveFail and Quorum) including below-threshold suppression and window boundaries
 
-Day 4
-- [x] Add RuleFinding channel in Core and sinks write-path
- - [x] Emit a simple threshold rule via RulesService; CLI subscribes to findings for WARN lines (composite rules; orchestrator evaluates per-target window)
- - [x] Quick smoke: pools rotate, findings appear; note any regressions in DEV_TASKS
+Day 4 — M6 validation and M7 smoke
+- [ ] Config validator: floors, dedupe/normalize targets, deny/allow lists (lightweight)
+- [ ] Tests for parsing variants, defaults, and validation errors
+- [ ] E2E smoke: run with pools and verify rotation/backoff; findings replace UI alerts in logs
+
+Day 5 — M7 perf/back-pressure and docs
+- [ ] Validate bounded channels/back-pressure under load (synthetic burst); adjust if needed
+- [ ] Finalize design/implementation notes; plan to remove this file after stabilization
 
 ## Notes
 - Destination pools must rotate; on error streaks, re-check current target (backoff-aware) and also probe others to localize scope.

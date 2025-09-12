@@ -47,6 +47,59 @@ public class OrchestrationTests
     }
 
     [Fact]
+    public void StatsService_P50_P95_AreComputed()
+    {
+        var stats = new StatsService();
+        var t0 = DateTimeOffset.UtcNow;
+        // OK latencies: 10, 20, 30, 40, 50
+        for (int i = 1; i <= 5; i++)
+            stats.Observe(new NetSample(t0 - TimeSpan.FromSeconds(6 - i), SampleKind.Http, "u", Ok: true, Milliseconds: i * 10, Extra: null));
+        // A couple failures inside window
+        stats.Observe(new NetSample(t0 - TimeSpan.FromSeconds(2), SampleKind.Http, "u", Ok: false, Milliseconds: null, Extra: null));
+        var res = stats.TryGetWindowWithLatency("http", "u", TimeSpan.FromSeconds(10), t0);
+        Assert.NotNull(res);
+        var (count, ok, failPct, p50, p95) = res!.Value;
+        Assert.Equal(6, count);
+        Assert.Equal(5, ok);
+        Assert.True(failPct > 0);
+        Assert.Equal(30, p50);
+        Assert.Equal(50, p95);
+    }
+
+    [Fact]
+    public void ConsecutiveFailRule_Fires_On_Threshold()
+    {
+        var rule = new ConsecutiveFailRulesService(threshold: 3);
+        var now = DateTimeOffset.UtcNow;
+        var list = new List<NetSample>
+        {
+            new(now - TimeSpan.FromSeconds(3), SampleKind.Ping, "t", true, 10, null),
+            new(now - TimeSpan.FromSeconds(2), SampleKind.Ping, "t", false, null, null),
+            new(now - TimeSpan.FromSeconds(1), SampleKind.Ping, "t", false, null, null),
+            new(now, SampleKind.Ping, "t", false, null, null)
+        };
+        var f = rule.Evaluate(list, now);
+        Assert.NotNull(f);
+        Assert.Equal("consecutive_fail", f!.RuleId);
+    }
+
+    [Fact]
+    public void QuorumRule_Suppresses_Below_MinSamples()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var rule = new QuorumRulesService(TimeSpan.FromSeconds(10), failThreshold: 0.5, minSamples: 5);
+        var list = new List<NetSample>
+        {
+            new(now - TimeSpan.FromSeconds(4), SampleKind.Dns, "x", false, null, null),
+            new(now - TimeSpan.FromSeconds(3), SampleKind.Dns, "x", false, null, null),
+            new(now - TimeSpan.FromSeconds(2), SampleKind.Dns, "x", true, 5, null),
+            new(now - TimeSpan.FromSeconds(1), SampleKind.Dns, "x", true, 6, null)
+        };
+        var f = rule.Evaluate(list, now);
+        Assert.Null(f);
+    }
+
+    [Fact]
     public void TargetPools_RespectsMinInterval_AndJitterBounds()
     {
         var now = DateTimeOffset.UtcNow;

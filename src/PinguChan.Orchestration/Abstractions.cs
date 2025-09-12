@@ -49,6 +49,15 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
     // Keep a small recent window per (kind,key) for rule evaluation
     private readonly Dictionary<(string kind, string key), LinkedList<NetSample>> _recent = new();
     private static readonly TimeSpan MaxRecentWindow = TimeSpan.FromMinutes(10);
+    private readonly Dictionary<string, DateTimeOffset> _lastKindRun = new(StringComparer.OrdinalIgnoreCase);
+    private TimeSpan _floorPing = TimeSpan.Zero, _floorDns = TimeSpan.Zero, _floorHttp = TimeSpan.Zero;
+
+    public void SetGlobalFloors(TimeSpan? ping = null, TimeSpan? dns = null, TimeSpan? http = null)
+    {
+        _floorPing = ping ?? _floorPing;
+        _floorDns = dns ?? _floorDns;
+        _floorHttp = http ?? _floorHttp;
+    }
 
     public MonitorOrchestrator(
         ITargetPools pools,
@@ -99,6 +108,24 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
             {
                 var kindIdx = (rrIndex + i) % _kinds.Count;
                 var kind = _kinds[kindIdx];
+                // Enforce per-kind global floors
+                if (_lastKindRun.TryGetValue(kind, out var last))
+                {
+                    var floor = kind.ToLowerInvariant() switch
+                    {
+                        "ping" => _floorPing,
+                        "dns" => _floorDns,
+                        "http" => _floorHttp,
+                        _ => TimeSpan.Zero
+                    };
+                    var since = now - last;
+                    if (floor > TimeSpan.Zero && since < floor)
+                    {
+                        var rem = floor - since;
+                        if (rem < minDelay) minDelay = rem;
+                        continue;
+                    }
+                }
                 var next = _pools.TryGetNext(kind, now);
                 if (next is null) continue;
                 var (key, delay) = next.Value;
@@ -155,6 +182,7 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
             _stats.Observe(tagged);
             await SamplesBus.PublishAsync(tagged, _cts.Token);
             _pools.Report(selKind, key2, sample.Ok);
+            _lastKindRun[selKind] = now;
 
             if (_rules is not null)
             {

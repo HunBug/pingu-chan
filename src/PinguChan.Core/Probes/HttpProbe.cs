@@ -28,6 +28,9 @@ public sealed class HttpProbe : IProbe
         Timeout = timeout ?? TimeSpan.FromSeconds(3);
     }
 
+    // Optional global User-Agent set by CLI/config
+    public static string? UserAgent { get; set; }
+
     public async Task<NetSample> ExecuteAsync(CancellationToken ct)
     {
         var t0 = DateTimeOffset.UtcNow;
@@ -37,6 +40,10 @@ public sealed class HttpProbe : IProbe
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(Timeout);
             using var req = new HttpRequestMessage(HttpMethod.Get, _url);
+            if (!string.IsNullOrWhiteSpace(UserAgent))
+            {
+                req.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+            }
             using var resp = await Shared.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             sw.Stop();
             var ok = (int)resp.StatusCode < 500; // consider <500 ok for TTFB

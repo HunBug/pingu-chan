@@ -28,6 +28,10 @@ orchestration:
     backoffBase: 2.0
     backoffMaxMultiplier: 8
     decayHalfLife: 00:05:00
+  globalFloorPing: 0s
+  globalFloorDns: 0s
+  globalFloorHttp: 0s
+  diagnosticsInterval: 00:01:00
 
 # Rules
 rules:
@@ -36,3 +40,7 @@ rules:
     window: 00:01:00
     failThreshold: 0.5
     minSamples: 5
+
+# HTTP settings
+http:
+  userAgent: "Pingu-chan/0.1 (netwatch)"

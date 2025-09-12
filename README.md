@@ -32,10 +32,14 @@ dotnet run --project src/PinguChan.Cli -- --sudo diagnose
 - --config <path>  Path to YAML/JSON config (default: autodetect pingu.yaml/yml/json in CWD)
 - --duration <ts>  Total run time (e.g., 10s, 1m, 00:00:30). Omit to run until Ctrl+C.
 - --once           Run a single iteration of each probe and exit.
+- --dump-pools     Print a snapshot of TargetPools diagnostics and exit.
 - diagnose         Print capability report + one-shot probes and collectors.
 - --sudo           On Linux/macOS, try to cache sudo at startup (optional).
 
 During run, the CLI renders a 2-line live summary (loss/latency for ping; DNS failure rate and p95; HTTP TTFB p50/p95). It also writes results to configured sinks. If `sinks.logs` is set, human-readable logs are also written to that file.
+
+Configuration validation
+- On startup, `pingu` validates the config: dedupes/normalizes targets, checks global floors, and warns about unusual HTTP User-Agent values. Warnings are printed and execution continues. Errors (e.g., negative floors) cause a non‑zero exit code (2).
 
 ## Configuration (pingu.yaml)
 
