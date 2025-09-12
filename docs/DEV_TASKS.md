@@ -22,6 +22,7 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
  - [x] Scheduler: Ask pool for next, run probe, report result; include target key in NetSample.Extra
 - [ ] Etiquette: enforce global floors; set HTTP User-Agent from config
  - [ ] Observability: periodic pool diagnostics (snapshot API exists; periodic emission pending)
+  - Note: Added `--dump-pools` CLI flag to print a diagnostics snapshot on demand.
 - [x] Tests: fairness, min interval respect, backoff growth/decay, jitter bounds (basic rotation/backoff + min_interval/jitter bounds added)
 
 ### M3 — Rolling stats service

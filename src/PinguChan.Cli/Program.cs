@@ -72,6 +72,7 @@ var durationArg = args.SkipWhile(a => a != "--duration").Skip(1).FirstOrDefault(
 var once = args.Contains("--once");
 var diagnose = args.Contains("diagnose");
 var askSudo = args.Contains("--sudo");
+var dumpPools = args.Contains("--dump-pools");
 TimeSpan? duration = null;
 if (TimeSpan.TryParse(durationArg, out var d)) duration = d;
 
@@ -149,6 +150,22 @@ var now = DateTimeOffset.UtcNow;
 foreach (var target in cfg.Targets.Ping) pools.Add("ping", target, weight: 1, minInterval: pingInt, now: now);
 foreach (var target in cfg.Targets.Dns) pools.Add("dns", target, weight: 1, minInterval: dnsInt, now: now);
 foreach (var target in cfg.Targets.Http) pools.Add("http", target, weight: 1, minInterval: httpInt, now: now);
+
+if (dumpPools)
+{
+	Console.WriteLine("== TargetPools diagnostics ==");
+	foreach (var kind in new[] { "ping", "dns", "http" })
+	{
+		var diags = pools.GetDiagnostics(kind);
+		if (diags.Count == 0) continue;
+		Console.WriteLine($"[{kind}]");
+		foreach (var dgn in diags)
+		{
+			Console.WriteLine($"- key={dgn.Key} nextDue={dgn.NextDue:HH:mm:ss} failCount={dgn.FailureCount} inFlight={dgn.InFlight} minInt={dgn.MinInterval}");
+		}
+	}
+	return;
+}
 IStatsService statsSvc = new StatsService();
 var rf = cfg.Rules;
 var qwin = DurationParser.Parse(rf.Quorum.Window, TimeSpan.FromMinutes(1));

@@ -18,3 +18,21 @@ sinks:
   jsonl: netwatch.jsonl
   # optional: write human-readable logs, too
   logs: pingu.log
+  # if true, append _YYYYMMDD_HHMMSS to file names per run
+  appendTimestamp: true
+
+# Orchestration scheduler etiquette
+orchestration:
+  scheduler:
+    jitterPct: 0.2
+    backoffBase: 2.0
+    backoffMaxMultiplier: 8
+    decayHalfLife: 00:05:00
+
+# Rules
+rules:
+  consecutiveFailThreshold: 3
+  quorum:
+    window: 00:01:00
+    failThreshold: 0.5
+    minSamples: 5
