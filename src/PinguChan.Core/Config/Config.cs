@@ -37,6 +37,9 @@ public sealed class SinksConfig
     // If true (default), append a timestamp to sink filenames so each run writes a new file.
     // When false, files are appended like today.
     public bool AppendTimestamp { get; set; } = true;
+    // Logging levels: debug, info, warn, error (case-insensitive). Default: info for both console and file outputs.
+    public string ConsoleLogLevel { get; set; } = "info";
+    public string FileLogLevel { get; set; } = "info";
 }
 
 public sealed class OrchestrationConfig

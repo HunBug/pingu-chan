@@ -78,28 +78,30 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
   - [ ] CLI run with 2+ ping targets in pools; verify both generate samples and loss is tracked per target
   - [ ] Simulate transient failures (mock PingProbe) and assert findings emitted only with gating
 
-## Next few days (prioritized from milestones)
+## Next few days (prioritized from remaining items)
 
-Day 1 — M2 etiquette & observability
-- [ ] Enforce global floors across kinds to cap aggregate rate (respect min floors regardless of per-target intervals)
-- [ ] Set HTTP User-Agent from config (default descriptive UA)
-- [ ] Periodic pool diagnostics emission (e.g., every 60s to logs), complementing `--dump-pools`
+Day 1 — M5 Trigger engine (core)
+- [ ] Implement ITriggerEngine: evaluate simple conditions over stats/samples with debounce + cooldown
+- [ ] Wire trigger engine into orchestrator tick; emit a RuleFinding when a trigger fires
+- [ ] Ensure action execution has a per-action concurrency guard (no overlapping runs)
 
-Day 2 — M3 stats API extensions
-- [ ] Extend stats API to expose p50/p95 latencies per kind/target window
-- [ ] Keep existing counts/ok/fail% and add unit tests for p50/p95 edge cases
+Day 2 — M5 Trigger actions (stubs + tests)
+- [ ] Actions: mtu_sweep (skeleton), snapshot(arp_dhcp), next_hop_refresh, wifi_link (platform-guarded)
+- [ ] Action results emitted as normal NetSample events; add basic unit tests for success/failure paths
 
-Day 3 — M4 rules test coverage
-- [ ] Add rule trigger tests (ConsecutiveFail and Quorum) including below-threshold suppression and window boundaries
+Day 3 — Known issue verification
+- [ ] Re-check per-target loss using pools with ≥2 ping targets; ensure both targets surface failures
+- [ ] Add/confirm unit test that simulates failures on multiple targets and asserts both surface
+- [ ] Add sanity logger in tests to record target key + ok/fail during run (for troubleshooting)
 
-Day 4 — M6 validation and M7 smoke
-- [ ] Config validator: floors, dedupe/normalize targets, deny/allow lists (lightweight)
-- [ ] Tests for parsing variants, defaults, and validation errors
-- [ ] E2E smoke: run with pools and verify rotation/backoff; findings replace UI alerts in logs
+Day 4 — Tests and smoke gaps
+- [ ] Triggers: debounce/cooldown firing tests; action concurrency guard; simple scenario flows
+- [ ] Smoke: CLI run with 2+ ping targets; simulate transient failures (mock PingProbe) and assert findings are gated
+- [ ] Sinks: verify write/read of NetSample and RuleFinding per schema (CSV/JSONL)
 
-Day 5 — M7 perf/back-pressure and docs
-- [ ] Validate bounded channels/back-pressure under load (synthetic burst); adjust if needed
-- [ ] Finalize design/implementation notes; plan to remove this file after stabilization
+Day 5 — Validation and docs
+- [ ] Config validator: add deny/allow lists support and documentation
+- [ ] Docs: finalize design/implementation notes; plan to retire DEV_TASKS.md after stabilization
 
 ## Notes
 - Destination pools must rotate; on error streaks, re-check current target (backoff-aware) and also probe others to localize scope.

@@ -19,6 +19,8 @@ Durations accept "2s", "500ms", "1m", or standard TimeSpan format "hh:mm:ss".
 - jsonl: Output JSONL path. Default: netwatch.jsonl
 - logs: Optional text log path. If set, console-style logs are also written here.
 - appendTimestamp: If true (default), appends _YYYYMMDD_HHMMSS to sink filenames per run.
+- consoleLogLevel: Minimum level for console output. One of debug|info|warn|error. Default: info
+- fileLogLevel: Minimum level for file output (applies only if logs is set). One of debug|info|warn|error. Default: info
 
 ## orchestration.scheduler
 Controls destination pools and scheduling etiquette.
@@ -56,6 +58,8 @@ sinks:
   jsonl: netwatch.jsonl
   logs: pingu.log
   appendTimestamp: true
+  consoleLogLevel: info
+  fileLogLevel: info
 
 orchestration:
   scheduler:
@@ -63,10 +67,10 @@ orchestration:
     backoffBase: 2.0
     backoffMaxMultiplier: 8
     decayHalfLife: 00:05:00
-  globalFloorPing: 0s
-  globalFloorDns: 0s
-  globalFloorHttp: 0s
-  diagnosticsInterval: 00:01:00
+    globalFloorPing: 0s
+    globalFloorDns: 0s
+    globalFloorHttp: 0s
+    diagnosticsInterval: 00:01:00
 
 rules:
   consecutiveFailThreshold: 3

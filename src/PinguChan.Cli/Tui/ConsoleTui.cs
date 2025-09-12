@@ -10,6 +10,7 @@ namespace PinguChan.Cli.Tui;
 // - Maintains up to two status lines (line1, line2)
 public interface ISimpleLogger
 {
+    void LogDebug(string message);
     void LogInfo(string message);
     void LogWarn(string message);
     void LogError(string message);
@@ -66,6 +67,7 @@ public sealed class ConsoleTui : ISimpleLogger, IDisposable
     }
 
     // Simple logging API used by LoggerHelper fallback
+    public void LogDebug(string message) => WriteLineWithLevel("DBG", message);
     public void LogInfo(string message) => WriteLineWithLevel("INF", message);
     public void LogWarn(string message) => WriteLineWithLevel("WRN", message);
     public void LogError(string message) => WriteLineWithLevel("ERR", message);
@@ -234,6 +236,7 @@ public sealed class CompositeLogger : ISimpleLogger
 {
     private readonly ISimpleLogger[] _targets;
     public CompositeLogger(params ISimpleLogger[] targets) { _targets = targets; }
+    public void LogDebug(string message) { foreach (var t in _targets) t.LogDebug(message); }
     public void LogInfo(string message) { foreach (var t in _targets) t.LogInfo(message); }
     public void LogWarn(string message) { foreach (var t in _targets) t.LogWarn(message); }
     public void LogError(string message) { foreach (var t in _targets) t.LogError(message); }

@@ -20,6 +20,9 @@ sinks:
   logs: pingu.log
   # if true, append _YYYYMMDD_HHMMSS to file names per run
   appendTimestamp: true
+  # log levels for console and file outputs: debug|info|warn|error (default: info)
+  consoleLogLevel: info
+  fileLogLevel: info
 
 # Orchestration scheduler etiquette
 orchestration:

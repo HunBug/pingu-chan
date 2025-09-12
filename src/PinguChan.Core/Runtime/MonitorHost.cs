@@ -236,6 +236,11 @@ public static class LoggerHelper
 {
     public static readonly object ConsoleSync = new();
     public static object? ExternalLogger { get; set; }
+    public static void LogDebug(string message)
+    {
+        if (TryExternal("LogDebug", message)) return;
+        lock (ConsoleSync) { Console.WriteLine($"{DateTime.Now:HH:mm:ss} [DBG] {message}"); }
+    }
     public static void LogInfo(string message)
     {
         if (TryExternal("LogInfo", message)) return;

@@ -16,6 +16,7 @@ public sealed class FileLogger : ISimpleLogger, IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(_filePath) ?? ".");
     }
 
+    public void LogDebug(string message) => Write("DEBUG", message);
     public void LogInfo(string message) => Write("INFORMATION", message);
     public void LogWarn(string message) => Write("WARNING", message);
     public void LogError(string message) => Write("ERROR", message);

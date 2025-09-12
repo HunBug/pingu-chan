@@ -114,17 +114,28 @@ else
 }
 // no interactive sudo; just report privileges
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
-var tui = string.IsNullOrWhiteSpace(cfg.Sinks.Logs)
-	? new ConsoleTui()
-	: new ConsoleTui(logPath: (Path.IsPathRooted(cfg.Sinks.Logs!) ? WithTs(cfg.Sinks.Logs!) : WithTs(Path.Combine(AppContext.BaseDirectory, cfg.Sinks.Logs!))));
-PinguChan.Core.Runtime.LoggerHelper.ExternalLogger = tui;
+var baseLogger = new ConsoleTui();
+var tui = baseLogger; // keep for status lines
+// Build per-sink filtered loggers
+var consoleLevel = LogLevelParser.Parse(cfg.Sinks.ConsoleLogLevel, LogLevel.Info);
+ISimpleLogger consoleFiltered = new FilteringLogger(baseLogger, consoleLevel);
+ISimpleLogger effectiveLogger = consoleFiltered;
+if (!string.IsNullOrWhiteSpace(cfg.Sinks.Logs))
+{
+	var path = Path.IsPathRooted(cfg.Sinks.Logs!) ? WithTs(cfg.Sinks.Logs!) : WithTs(Path.Combine(AppContext.BaseDirectory, cfg.Sinks.Logs!));
+	var file = new FileLogger(path);
+	var fileLevel = LogLevelParser.Parse(cfg.Sinks.FileLogLevel, LogLevel.Info);
+	ISimpleLogger fileFiltered = new FilteringLogger(file, fileLevel);
+	effectiveLogger = new CompositeLogger(consoleFiltered, fileFiltered);
+}
+PinguChan.Core.Runtime.LoggerHelper.ExternalLogger = effectiveLogger;
 // Background task to surface findings
 var findingsCts = new CancellationTokenSource();
 var findingsTask = Task.Run(async () =>
 {
 	await foreach (var f in PinguChan.Core.Runtime.FindingsBus.ReadAllAsync(findingsCts.Token))
 	{
-		tui.LogWarn($"{f.Timestamp:HH:mm:ss} [{f.Severity}] {f.RuleId}: {f.Message}");
+		effectiveLogger.LogWarn($"{f.Timestamp:HH:mm:ss} [{f.Severity}] {f.RuleId}: {f.Message}");
 	}
 });
 var renderer = Task.Run(async () =>
@@ -195,7 +206,23 @@ var factories = new Dictionary<string, Func<string, IProbe>>(StringComparer.Ordi
 	["dns"] = key => new DnsProbe(key, dnsInt),
 	["http"] = key => new HttpProbe(key, httpInt)
 };
-var orchestrator = new MonitorOrchestrator(pools, statsSvc, factories, rulesSvc);
+// Minimal trigger: if a ping sample fails, after 3s debounce and 30s cooldown, run a lightweight snapshot action
+var trig = new TriggerEngine()
+	.AddTrigger(new TriggerEngine.TriggerSpec(
+		Id: "snapshot",
+		Debounce: TimeSpan.FromSeconds(3),
+		Cooldown: TimeSpan.FromSeconds(30),
+		Predicate: s => s.Kind == SampleKind.Ping && !s.Ok,
+		Action: async ct =>
+		{
+			// simulate a quick diagnostic action producing a sample
+			try { await Task.Delay(100, ct); } catch { }
+			var ns = new NetSample(DateTimeOffset.UtcNow, SampleKind.Collector, "snapshot", true, null, "{\"op\":\"snapshot\"}");
+			return new[] { ns };
+		}
+	));
+
+var orchestrator = new MonitorOrchestrator(pools, statsSvc, factories, rulesSvc, trig);
 // Apply global floors from config
 var floorPing = DurationParser.Parse(sched.GlobalFloorPing, TimeSpan.Zero);
 var floorDns = DurationParser.Parse(sched.GlobalFloorDns, TimeSpan.Zero);
@@ -206,6 +233,7 @@ await orchestrator.StartAsync();
 // Periodic pool diagnostics if configured
 var diagInterval = DurationParser.Parse(sched.DiagnosticsInterval, TimeSpan.Zero);
 System.Timers.Timer? diagTimer = null;
+System.Timers.Timer? triggerTimer = null;
 if (diagInterval > TimeSpan.Zero)
 {
 	diagTimer = new System.Timers.Timer(diagInterval.TotalMilliseconds)
@@ -220,10 +248,20 @@ if (diagInterval > TimeSpan.Zero)
 			var diags = pools.GetDiagnostics(kind);
 			if (diags.Count == 0) continue;
 			foreach (var dgn in diags)
-				tui.LogInfo($"POOL {kind} key={dgn.Key} next={dgn.NextDue:HH:mm:ss} fail={dgn.FailureCount} inFlight={dgn.InFlight}");
+				effectiveLogger.LogInfo($"POOL {kind} key={dgn.Key} next={dgn.NextDue:HH:mm:ss} fail={dgn.FailureCount} inFlight={dgn.InFlight}");
 		}
 	};
 }
+// Trigger tick timer (lightweight, always enabled)
+triggerTimer = new System.Timers.Timer(1000)
+{
+	AutoReset = true,
+	Enabled = true
+};
+triggerTimer.Elapsed += (_, __) =>
+{
+	try { trig.OnTick(DateTimeOffset.UtcNow); } catch { }
+};
 var stopRequested = false;
 Console.CancelKeyPress += async (_, e) =>
 {
@@ -233,6 +271,7 @@ Console.CancelKeyPress += async (_, e) =>
 	cts.Cancel();
 	findingsCts.Cancel();
 	if (diagTimer is not null) diagTimer.Stop();
+	if (triggerTimer is not null) triggerTimer.Stop();
 	await host.StopAsync();
 	await orchestrator.StopAsync();
 };
@@ -244,6 +283,7 @@ findingsCts.Cancel();
 try { await findingsTask; } catch { }
 await orchestrator.StopAsync();
 if (diagTimer is not null) diagTimer.Dispose();
+if (triggerTimer is not null) triggerTimer.Dispose();
 
 
 static void PrintEnv()

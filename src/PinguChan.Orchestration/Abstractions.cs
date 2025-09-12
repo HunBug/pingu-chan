@@ -35,6 +35,7 @@ public interface IRulesService
 public interface ITriggerEngine
 {
     void OnTick(DateTimeOffset now);
+    void Observe(NetSample sample);
 }
 
 public sealed class MonitorOrchestrator : IAsyncDisposable
@@ -51,6 +52,9 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
     private static readonly TimeSpan MaxRecentWindow = TimeSpan.FromMinutes(10);
     private readonly Dictionary<string, DateTimeOffset> _lastKindRun = new(StringComparer.OrdinalIgnoreCase);
     private TimeSpan _floorPing = TimeSpan.Zero, _floorDns = TimeSpan.Zero, _floorHttp = TimeSpan.Zero;
+    private readonly ITriggerEngine? _trigger;
+    private DateTimeOffset _lastTriggerTick = DateTimeOffset.MinValue;
+    private static readonly TimeSpan TriggerTickMinInterval = TimeSpan.FromSeconds(1);
 
     public void SetGlobalFloors(TimeSpan? ping = null, TimeSpan? dns = null, TimeSpan? http = null)
     {
@@ -63,13 +67,15 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
         ITargetPools pools,
         IStatsService stats,
         IReadOnlyDictionary<string, Func<string, IProbe>> probeFactories,
-        IRulesService? rules = null)
+    IRulesService? rules = null,
+    ITriggerEngine? trigger = null)
     {
         _pools = pools;
         _stats = stats;
         _rules = rules;
         _probeFactories = new Dictionary<string, Func<string, IProbe>>(probeFactories, StringComparer.OrdinalIgnoreCase);
         _kinds = _probeFactories.Keys.OrderBy(k => k).ToList();
+    _trigger = trigger;
     }
 
     public ValueTask DisposeAsync()
@@ -175,6 +181,8 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
                 sample = new NetSample(now, kindEnum, key2, false, null, null);
             }
 
+            LoggerHelper.LogDebug($"[orchestrator] ran kind={selKind} key={key2} ok={(sample.Ok ? "yes" : "no")}");
+
             // Tag pool/key into Extra for downstream consumers using typed codec
             var meta = SampleMetaCodec.TryParse(sample.Extra) ?? new PinguChan.Core.Models.SampleMeta();
             meta = meta with { Pool = selKind, Key = key2 };
@@ -183,6 +191,9 @@ public sealed class MonitorOrchestrator : IAsyncDisposable
             await SamplesBus.PublishAsync(tagged, _cts.Token);
             _pools.Report(selKind, key2, sample.Ok);
             _lastKindRun[selKind] = now;
+
+            // Feed triggers with observed samples
+            _trigger?.Observe(tagged);
 
             if (_rules is not null)
             {
