@@ -11,43 +11,20 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 ## Milestones & Tasks
 
 ### M1 — Findings stream + Orchestration skeleton
-- [x] Core: Add Channel<RuleFinding> and sinks write-path
-- [x] Orchestration: Project skeleton, Start/Stop API, subscribe to Core sample stream (minimal scheduler loop in place)
-- [ ] Orchestration: Expose IAsyncEnumerable<RuleFinding>
-- [x] CLI: Subscribe to findings stream for WARNs (keep current alerts until migration completes)
-- [x] Tests: CSV/JSONL write of RuleFinding; simple “finding passes through” smoke (sink tests added)
+Note: Findings stream is published by the orchestrator and the CLI subscribes; MonitorOrchestrator exposes a Findings accessor used by CLI.
 
 ### M2 — Target pools & scheduler
-- [x] Service: ITargetPools with weighted rotation, min_interval, jitter_pct, failure backoff, per-target concurrency=1 (concurrency guard pending)
-- [x] Scheduler: Ask pool for next, run probe, report result; include target key in NetSample.Extra (Extra pending)
-- [ ] Etiquette: enforce global floors; set HTTP User-Agent from config
-- [ ] Observability: periodic pool diagnostics (skipped due to min_interval, current backoff)
-- [x] Tests: fairness, min interval respect, backoff growth/decay, jitter bounds (basic rotation/backoff + min_interval/jitter bounds added)
+Note: Target pools now include a per-target in-flight guard, exponential backoff, and time-based decay. `GetDiagnostics(kind)` returns a snapshot for observability; consider exposing via CLI.
 
 ### M3 — Rolling stats service
-- [x] Port CLI StatsAggregator into IStatsService with windows (e.g., 1m/5m) (minimal impl)
-- [ ] API: Query per kind/target aggregates (ok count, fail%, p50/p95)
-- [x] Tests: stats windows, edge cases (empty windows, single-sample) (basic window test added + per-target loss tracking across two hosts)
-
-### M4 — Rules engine (noise reduction)
+Note: ConsecutiveFail and Quorum rule implementations have been added and are wired into a CompositeRulesService. CLI now receives findings from rules; tests for Quorum were added. Remaining: broader rule test coverage and suppression logic.
 - [ ] Implement ConsecutiveFail rule (per-target streak)
 - [ ] Implement Quorum rule (windowed multi-category gating)
-- [ ] Emit RuleFindings with context (streak/quorum flags)
-- [x] CLI: remove renderer-side thresholds; print findings only
-- [ ] Tests: rule triggers, gating behavior, suppression when below thresholds
+Note: Config was extended with `orchestration.scheduler` and `rules.quorum` (window/failThreshold/minSamples). CLI is wired to build pools, schedulers, and rules from config. Validation and more schema docs are pending.
 
 ### M5 — Trigger engine
-- [ ] Implement ITriggerEngine (conditions over stats/samples); debounce + cooldown
-- [ ] Actions: mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link
-- [ ] Emit finding on trigger fire; action results are normal samples
-- [ ] Tests: debounce/cooldown; action concurrency guard; simple scenario flows
-
 ### M6 — Config unification & validation
 - [ ] Extend config with pools/scheduler/rules/triggers (defaults preserve current behavior)
-- [ ] Validator: floors, dedupe/normalize targets, deny/allow lists
-- [ ] Tests: parsing variants, defaulting, validation errors
-
-### M7 — Smoke & stabilization
 - [ ] End-to-end: run with pools; verify rotation/backoff; findings appear instead of UI alerts
 - [ ] Perf: bounded channels/back-pressure behavior under load
 - [ ] Docs: finalize design/implementation notes; remove DEV_TASKS.md when stable
