@@ -13,6 +13,7 @@ public sealed class PinguConfig
     public OrchestrationConfig Orchestration { get; set; } = new();
     public RulesConfig Rules { get; set; } = new();
     public HttpConfig Http { get; set; } = new();
+    public FiltersConfig Filters { get; set; } = new();
 }
 
 public sealed class IntervalsConfig
@@ -27,6 +28,13 @@ public sealed class TargetsConfig
     public List<string> Ping { get; set; } = new() { "1.1.1.1", "8.8.8.8" };
     public List<string> Dns { get; set; } = new() { "github.com" };
     public List<string> Http { get; set; } = new() { "https://www.google.com/generate_204" };
+}
+
+public sealed class FiltersConfig
+{
+    // Optional allow/deny lists applied to all kinds; evaluated on normalized strings
+    public List<string> Allow { get; set; } = new();
+    public List<string> Deny { get; set; } = new();
 }
 
 public sealed class SinksConfig

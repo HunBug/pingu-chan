@@ -17,7 +17,7 @@ public sealed class ConfigValidator
         var errors = new List<string>();
 
         // Dedupe and normalize targets
-        cfg.Targets.Ping = cfg.Targets.Ping
+    cfg.Targets.Ping = cfg.Targets.Ping
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -32,6 +32,23 @@ public sealed class ConfigValidator
             .Select(s => s.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // Apply allow/deny filters if present
+        if (cfg.Filters is not null && (cfg.Filters.Allow.Count > 0 || cfg.Filters.Deny.Count > 0))
+        {
+            bool Allowed(string s)
+            {
+                var allowOk = cfg.Filters.Allow.Count == 0 || cfg.Filters.Allow.Any(a => s.Contains(a, StringComparison.OrdinalIgnoreCase));
+                var denyHit = cfg.Filters.Deny.Any(d => s.Contains(d, StringComparison.OrdinalIgnoreCase));
+                return allowOk && !denyHit;
+            }
+            int before = cfg.Targets.Ping.Count + cfg.Targets.Dns.Count + cfg.Targets.Http.Count;
+            cfg.Targets.Ping = cfg.Targets.Ping.Where(Allowed).ToList();
+            cfg.Targets.Dns = cfg.Targets.Dns.Where(Allowed).ToList();
+            cfg.Targets.Http = cfg.Targets.Http.Where(Allowed).ToList();
+            int after = cfg.Targets.Ping.Count + cfg.Targets.Dns.Count + cfg.Targets.Http.Count;
+            if (after < before) warnings.Add($"Filters removed {before - after} target(s) via allow/deny lists.");
+        }
 
         if (cfg.Targets.Ping.Count == 0) warnings.Add("No ping targets configured.");
         if (cfg.Targets.Dns.Count == 0) warnings.Add("No DNS targets configured.");

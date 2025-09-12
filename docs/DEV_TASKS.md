@@ -20,9 +20,8 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 ### M2 — Target pools & scheduler
  - [x] Service: ITargetPools with weighted rotation, min_interval, jitter_pct, failure backoff, per-target concurrency=1
  - [x] Scheduler: Ask pool for next, run probe, report result; include target key in NetSample.Extra
-- [x] Etiquette: enforce global floors; set HTTP User-Agent from config
- - [x] Observability: periodic pool diagnostics (snapshot API exists; periodic emission pending)
-  - Note: Added `--dump-pools` CLI flag to print a diagnostics snapshot on demand.
+ - [x] Etiquette: enforce global floors; set HTTP User-Agent from config
+ - [x] Observability: periodic pool diagnostics + `--dump-pools`; demoted per-run scheduler logs to debug
 - [x] Tests: fairness, min interval respect, backoff growth/decay, jitter bounds (basic rotation/backoff + min_interval/jitter bounds added)
 
 ### M3 — Rolling stats service
@@ -38,14 +37,16 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 - [x] Tests: rule triggers, gating behavior, suppression when below thresholds
 
 ### M5 — Trigger engine
-- [ ] Implement ITriggerEngine (conditions over stats/samples); debounce + cooldown
-- [ ] Actions: mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link
-- [ ] Emit finding on trigger fire; action results are normal samples
-- [ ] Tests: debounce/cooldown; action concurrency guard; simple scenario flows
+- [x] Implement ITriggerEngine (conditions over samples) with debounce + cooldown, per-action concurrency guard
+- [ ] Actions: mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link (stubs + platform guards)
+- [x] Emit finding on trigger fire; action results are normal samples
+- [x] Wire trigger engine into orchestrator tick and CLI; add orchestrator logs for armed/firing with cause details
+- [ ] Tests: action concurrency guard; simple scenario flows (debounce/cooldown covered)
 
 ### M6 — Config unification & validation
- - [x] Extend config with pools/scheduler/rules (triggers later; defaults preserve current behavior)
-- [x] Validator: floors, dedupe/normalize targets, deny/allow lists (deny/allow TBD)
+- [x] Extend config with pools/scheduler/rules; add sinks.consoleLogLevel and sinks.fileLogLevel (defaults: info)
+- [x] Validator: floors, dedupe/normalize targets
+- [ ] Validator: deny/allow lists support
 - [x] Tests: parsing variants, defaulting, validation errors
 
 ### M7 — Smoke & stabilization
@@ -71,37 +72,34 @@ Purpose: Track the orchestration refactor, progress, issues, and tests during de
 - [ ] Unit tests
   - [x] TargetPools: rotation, min_interval, backoff growth/decay, jitter bounds
   - [x] StatsService: per-kind/target windows, fail% calculation (p50/p95 pending)
-  - [ ] Rules: ConsecutiveFail/Quorum (partial: Quorum covered)
-  - [ ] Triggers: debounce/cooldown firing
+  - [x] Rules: ConsecutiveFail/Quorum
+  - [x] Triggers: debounce/cooldown firing
   - [ ] Sinks: write/read of NetSample and RuleFinding
 - [ ] Smoke tests
   - [ ] CLI run with 2+ ping targets in pools; verify both generate samples and loss is tracked per target
   - [ ] Simulate transient failures (mock PingProbe) and assert findings emitted only with gating
 
-## Next few days (prioritized from remaining items)
+## Next few days (final push)
 
-Day 1 — M5 Trigger engine (core)
-- [ ] Implement ITriggerEngine: evaluate simple conditions over stats/samples with debounce + cooldown
-- [ ] Wire trigger engine into orchestrator tick; emit a RuleFinding when a trigger fires
-- [ ] Ensure action execution has a per-action concurrency guard (no overlapping runs)
+Day 1 — Trigger actions & wiring
+- [ ] Implement actions (stubs + guards): mtu_sweep, snapshot(arp_dhcp), next_hop_refresh, wifi_link (platform-guarded)
+- [ ] Emit action outputs as NetSample; ensure errors surface as Warning findings
+- [ ] Tests: action success/failure, concurrency guard (no overlap)
 
-Day 2 — M5 Trigger actions (stubs + tests)
-- [ ] Actions: mtu_sweep (skeleton), snapshot(arp_dhcp), next_hop_refresh, wifi_link (platform-guarded)
-- [ ] Action results emitted as normal NetSample events; add basic unit tests for success/failure paths
+Day 2 — Config, validator, UX
+- [ ] Validator: add deny/allow lists support + docs
+- [ ] CLI: optional verbosity flag to override sinks.consoleLogLevel
+- [ ] Docs: CONFIG.md update for triggers/actions and verbosity flag
 
-Day 3 — Known issue verification
-- [ ] Re-check per-target loss using pools with ≥2 ping targets; ensure both targets surface failures
-- [ ] Add/confirm unit test that simulates failures on multiple targets and asserts both surface
-- [ ] Add sanity logger in tests to record target key + ok/fail during run (for troubleshooting)
+Day 3 — Verification & smoke
+- [ ] Known issue: per-target loss with ≥2 ping targets (unit test + quick run)
+- [ ] Smoke: run orchestrated session; verify pool rotation/backoff, trigger fires, findings emitted, CSV/JSONL written
+- [ ] Sinks: schema check for NetSample and RuleFinding (CSV/JSONL)
 
-Day 4 — Tests and smoke gaps
-- [ ] Triggers: debounce/cooldown firing tests; action concurrency guard; simple scenario flows
-- [ ] Smoke: CLI run with 2+ ping targets; simulate transient failures (mock PingProbe) and assert findings are gated
-- [ ] Sinks: verify write/read of NetSample and RuleFinding per schema (CSV/JSONL)
-
-Day 5 — Validation and docs
-- [ ] Config validator: add deny/allow lists support and documentation
-- [ ] Docs: finalize design/implementation notes; plan to retire DEV_TASKS.md after stabilization
+Day 4 — Polish & wrap-up
+- [ ] Docs: finalize design/implementation notes; short README note on triggers/logging levels
+- [ ] CI: ensure tests pass on Windows/Linux matrix
+- [ ] Cleanup: plan to retire or archive DEV_TASKS.md after stabilization
 
 ## Notes
 - Destination pools must rotate; on error streaks, re-check current target (backoff-aware) and also probe others to localize scope.

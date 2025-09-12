@@ -9,6 +9,7 @@ using PinguChan.Cli.Tui;
 using PinguChan.Core.Collectors;
 using PinguChan.Cli.Sudo;
 using PinguChan.Orchestration;
+using PinguChan.Orchestration.Actions;
 using System.Timers;
 
 // Minimal wiring without Host (no external packages required)
@@ -84,6 +85,7 @@ var once = args.Contains("--once");
 var diagnose = args.Contains("diagnose");
 var askSudo = args.Contains("--sudo");
 var dumpPools = args.Contains("--dump-pools");
+var verbosityArg = args.SkipWhile(a => a != "--verbosity").Skip(1).FirstOrDefault();
 TimeSpan? duration = null;
 if (TimeSpan.TryParse(durationArg, out var d)) duration = d;
 
@@ -117,7 +119,7 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 var baseLogger = new ConsoleTui();
 var tui = baseLogger; // keep for status lines
 // Build per-sink filtered loggers
-var consoleLevel = LogLevelParser.Parse(cfg.Sinks.ConsoleLogLevel, LogLevel.Info);
+var consoleLevel = LogLevelParser.Parse(verbosityArg ?? cfg.Sinks.ConsoleLogLevel, LogLevel.Info);
 ISimpleLogger consoleFiltered = new FilteringLogger(baseLogger, consoleLevel);
 ISimpleLogger effectiveLogger = consoleFiltered;
 if (!string.IsNullOrWhiteSpace(cfg.Sinks.Logs))
@@ -206,20 +208,35 @@ var factories = new Dictionary<string, Func<string, IProbe>>(StringComparer.Ordi
 	["dns"] = key => new DnsProbe(key, dnsInt),
 	["http"] = key => new HttpProbe(key, httpInt)
 };
-// Minimal trigger: if a ping sample fails, after 3s debounce and 30s cooldown, run a lightweight snapshot action
+// Triggers: on sustained ping failures, run diagnostic actions with debounce + cooldowns
 var trig = new TriggerEngine()
 	.AddTrigger(new TriggerEngine.TriggerSpec(
 		Id: "snapshot",
 		Debounce: TimeSpan.FromSeconds(3),
 		Cooldown: TimeSpan.FromSeconds(30),
 		Predicate: s => s.Kind == SampleKind.Ping && !s.Ok,
-		Action: async ct =>
-		{
-			// simulate a quick diagnostic action producing a sample
-			try { await Task.Delay(100, ct); } catch { }
-			var ns = new NetSample(DateTimeOffset.UtcNow, SampleKind.Collector, "snapshot", true, null, "{\"op\":\"snapshot\"}");
-			return new[] { ns };
-		}
+		Action: TriggerActions.SnapshotArpDhcp()
+	))
+	.AddTrigger(new TriggerEngine.TriggerSpec(
+		Id: "mtu_sweep",
+		Debounce: TimeSpan.FromSeconds(5),
+		Cooldown: TimeSpan.FromMinutes(5),
+		Predicate: s => s.Kind == SampleKind.Ping && !s.Ok,
+		Action: TriggerActions.MtuSweep()
+	))
+	.AddTrigger(new TriggerEngine.TriggerSpec(
+		Id: "next_hop_refresh",
+		Debounce: TimeSpan.FromSeconds(5),
+		Cooldown: TimeSpan.FromMinutes(2),
+		Predicate: s => s.Kind == SampleKind.Ping && !s.Ok,
+		Action: TriggerActions.NextHopRefresh()
+	))
+	.AddTrigger(new TriggerEngine.TriggerSpec(
+		Id: "wifi_link",
+		Debounce: TimeSpan.FromSeconds(5),
+		Cooldown: TimeSpan.FromMinutes(10),
+		Predicate: s => s.Kind == SampleKind.Ping && !s.Ok,
+		Action: TriggerActions.WifiLink()
 	));
 
 var orchestrator = new MonitorOrchestrator(pools, statsSvc, factories, rulesSvc, trig);

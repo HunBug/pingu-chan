@@ -22,6 +22,14 @@ Durations accept "2s", "500ms", "1m", or standard TimeSpan format "hh:mm:ss".
 - consoleLogLevel: Minimum level for console output. One of debug|info|warn|error. Default: info
 - fileLogLevel: Minimum level for file output (applies only if logs is set). One of debug|info|warn|error. Default: info
 
+## filters
+Optional allow/deny lists applied to normalized targets. Matching is simple substring (case-insensitive), not regex.
+
+- allow: If non-empty, only targets containing any of these strings are kept.
+- deny: Targets containing any of these strings are removed.
+
+Applied to `targets.ping`, `targets.dns`, and `targets.http` after deduplication/normalization. Useful for quick scoping during tests.
+
 ## orchestration.scheduler
 Controls destination pools and scheduling etiquette.
 
@@ -60,6 +68,10 @@ sinks:
   appendTimestamp: true
   consoleLogLevel: info
   fileLogLevel: info
+
+filters:
+  allow: []
+  deny: []
 
 orchestration:
   scheduler:

@@ -33,6 +33,7 @@ dotnet run --project src/PinguChan.Cli -- --sudo diagnose
 - --duration <ts>  Total run time (e.g., 10s, 1m, 00:00:30). Omit to run until Ctrl+C.
 - --once           Run a single iteration of each probe and exit.
 - --dump-pools     Print a snapshot of TargetPools diagnostics and exit.
+- --verbosity <lvl> Override console log level at runtime (trace|debug|info|warn|error). File level remains from config.
 - diagnose         Print capability report + one-shot probes and collectors.
 - --sudo           On Linux/macOS, try to cache sudo at startup (optional).
 

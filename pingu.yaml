@@ -24,6 +24,11 @@ sinks:
   consoleLogLevel: info
   fileLogLevel: info
 
+# Optional target filters (applied after normalization)
+filters:
+  allow: []   # strings to include (substring match); if empty, allow all
+  deny: []    # strings to exclude (substring match)
+
 # Orchestration scheduler etiquette
 orchestration:
   scheduler:
