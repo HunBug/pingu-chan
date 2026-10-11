@@ -75,10 +75,11 @@ public sealed class RouteCollector(TimeSpan interval) : ICollector
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 }
 
-public sealed class FirewallCollector(TimeSpan interval) : ICollector
+public sealed class FirewallCollector(TimeSpan interval, bool useSudo = false) : ICollector
 {
     public string Id => "net.firewall";
     public TimeSpan Interval { get; } = interval;
+    private readonly bool _useSudo = useSudo;
 
     public async Task<IReadOnlyCollection<NetSample>> CollectAsync(CancellationToken ct)
     {
@@ -98,15 +99,25 @@ public sealed class FirewallCollector(TimeSpan interval) : ICollector
             }
             else
             {
-                // Try ufw, then firewalld-cmd
-                var resUfw = await ProcessRunner.RunAsync("ufw", "status", TimeSpan.FromSeconds(3), ct);
-                if (resUfw.ExitCode == 0)
-                    list.Add(new NetSample(now, SampleKind.Collector, "firewall.ufw", true, null, JsonUtil.Serialize(new { output = Truncate(resUfw.StdOut, 4000) })));
+                // ufw/firewall-cmd require root; calling them without sudo triggers a polkit
+                // GUI agent on the desktop session regardless of what DISPLAY the child sees.
+                // Skip entirely when sudo was not cached — use --sudo to enable this collector.
+                if (!_useSudo)
+                {
+                    list.Add(new NetSample(now, SampleKind.Collector, "firewall", false, null,
+                        JsonUtil.Serialize(new { skipped = "requires --sudo" })));
+                }
                 else
                 {
-                    var resFw = await ProcessRunner.RunAsync("firewall-cmd", "--state", TimeSpan.FromSeconds(3), ct);
-                    var ok = resFw.ExitCode == 0;
-                    list.Add(new NetSample(now, SampleKind.Collector, "firewall.firewalld", ok, null, JsonUtil.Serialize(new { output = Truncate(resFw.StdOut, 4000) })));
+                    var resUfw = await ProcessRunner.RunAsync("sudo", "-n ufw status", TimeSpan.FromSeconds(3), ct, noGraphicalAuth: true);
+                    if (resUfw.ExitCode == 0)
+                        list.Add(new NetSample(now, SampleKind.Collector, "firewall.ufw", true, null, JsonUtil.Serialize(new { output = Truncate(resUfw.StdOut, 4000) })));
+                    else
+                    {
+                        var resFw = await ProcessRunner.RunAsync("sudo", "-n firewall-cmd --state", TimeSpan.FromSeconds(3), ct, noGraphicalAuth: true);
+                        var ok = resFw.ExitCode == 0;
+                        list.Add(new NetSample(now, SampleKind.Collector, "firewall.firewalld", ok, null, JsonUtil.Serialize(new { output = Truncate(resFw.StdOut, 4000) })));
+                    }
                 }
             }
         }

@@ -48,12 +48,25 @@ if (!gatewayProbe.Id.EndsWith(":unknown")) diagProbes.Add(gatewayProbe);
 // MTU probe (best-effort, infrequent)
 diagProbes.Add(new MtuProbe("8.8.8.8", TimeSpan.FromMinutes(30)));
 
+// Elevation: cache sudo up front (in the terminal) so privileged collectors can use it
+// non-interactively. Doing this before anything runs avoids a mid-run polkit popup.
+var askSudo = args.Contains("--sudo");
+var sudoReady = false;
+if (askSudo && SudoHelper.IsUnixLike)
+{
+	Console.WriteLine("sudo is needed to read firewall state (ufw/firewalld require root).");
+	Console.WriteLine("Caching credentials now — you will not be prompted again during the run.");
+	sudoReady = SudoHelper.TryElevateInteractive();
+	if (!sudoReady)
+		Console.WriteLine("[warn] sudo credential caching failed; firewall state may be unavailable.");
+}
+
 // Collectors (diagnostics)
 var collectors = new List<ICollector>
 {
 	new NetIfCollector(TimeSpan.FromMinutes(5)),
 	new RouteCollector(TimeSpan.FromMinutes(5)),
-	new FirewallCollector(TimeSpan.FromMinutes(10)),
+	new FirewallCollector(TimeSpan.FromMinutes(10), useSudo: sudoReady),
 	new TracerouteCollector(TimeSpan.FromMinutes(30)),
 	new InternetConnectivityCollector(TimeSpan.FromMinutes(1))
 };
@@ -83,7 +96,6 @@ if (!string.IsNullOrWhiteSpace(cfg.Sinks.Jsonl))
 var durationArg = args.SkipWhile(a => a != "--duration").Skip(1).FirstOrDefault();
 var once = args.Contains("--once");
 var diagnose = args.Contains("diagnose");
-var askSudo = args.Contains("--sudo");
 var dumpPools = args.Contains("--dump-pools");
 var verbosityArg = args.SkipWhile(a => a != "--verbosity").Skip(1).FirstOrDefault();
 TimeSpan? duration = null;
@@ -91,9 +103,7 @@ if (TimeSpan.TryParse(durationArg, out var d)) duration = d;
 
 if (diagnose)
 {
-	// quick one-shot: environment + capabilities + run each probe once
 	PrintEnv();
-	// no interactive sudo; just report privileges
 	await PrintCapabilitiesAsync();
 	await using var diagHost = new MonitorHost(diagProbes, collectors, sinks);
 	await diagHost.RunAsync(duration: null, once: true);
@@ -114,7 +124,6 @@ else
 {
 	Console.WriteLine($"Starting monitoring for duration: {duration.Value}.");
 }
-// no interactive sudo; just report privileges
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 var baseLogger = new ConsoleTui();
 var tui = baseLogger; // keep for status lines

@@ -6,7 +6,10 @@ public static class ProcessRunner
 {
     public sealed record Result(int ExitCode, string StdOut, string StdErr, TimeSpan Duration);
 
-    public static async Task<Result> RunAsync(string fileName, string args, TimeSpan timeout, CancellationToken ct)
+    // When noGraphicalAuth is true, clears DISPLAY/WAYLAND_DISPLAY/SUDO_ASKPASS in the child
+    // environment so tools like sudo/ufw/pkexec cannot spawn a graphical auth agent. Without a
+    // display, a non-interactive `sudo -n` fails fast instead of popping (and orphaning) a dialog.
+    public static async Task<Result> RunAsync(string fileName, string args, TimeSpan timeout, CancellationToken ct, bool noGraphicalAuth = false)
     {
         var psi = new ProcessStartInfo
         {
@@ -17,6 +20,12 @@ public static class ProcessRunner
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        if (noGraphicalAuth)
+        {
+            psi.Environment["DISPLAY"] = string.Empty;
+            psi.Environment["WAYLAND_DISPLAY"] = string.Empty;
+            psi.Environment.Remove("SUDO_ASKPASS");
+        }
 
         using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
